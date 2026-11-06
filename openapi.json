@@ -1,0 +1,2300 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WEDID API",
+    "description": "WEDID 백엔드 API (목 응답 단계 — 실제 데이터·추천 로직 연동 전)",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/regions": {
+      "get": {
+        "tags": [
+          "예상 비용 계산"
+        ],
+        "summary": "선택 가능한 결혼 지역 조회",
+        "operationId": "list_regions_api_v1_regions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Region"
+                  },
+                  "type": "array",
+                  "title": "Response List Regions Api V1 Regions Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/guest-ranges": {
+      "get": {
+        "tags": [
+          "예상 비용 계산"
+        ],
+        "summary": "하객 수 선택 구간 조회",
+        "operationId": "list_guest_ranges_api_v1_guest_ranges_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuestRange"
+                  },
+                  "type": "array",
+                  "title": "Response List Guest Ranges Api V1 Guest Ranges Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/budgets/estimate": {
+      "post": {
+        "tags": [
+          "예상 비용 계산"
+        ],
+        "summary": "조건별 예상 비용 범위 계산 (스드메 예산대 변경 시 재호출)",
+        "description": "첫 계산은 `sdmTier` 없이 호출 → 서버 기본 예산대로 계산.\n\n사용자가 스드메 예산대를 바꾸면 같은 조건 + `sdmTier`를 넣어 다시 호출.",
+        "operationId": "estimate_budget_api_v1_budgets_estimate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetEstimateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEstimateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vendors": {
+      "get": {
+        "tags": [
+          "예식장 후보 조회"
+        ],
+        "summary": "예식장 후보 목록 및 필터링 (추천 상위 5개 포함)",
+        "description": "필수 필터: 운영 중 · 지역 · 최대 수용인원 ≥ 하객 수 · 최소 보증인원 ≤ 하객 수.\n\n`sort=recommended`(기본)이면 규칙 기반 추천 점수순 상위 5개와 `recommendation` 필드를 반환. 가격 정보가 빠진 업체는 추천 순위에서 제외.",
+        "operationId": "list_vendors_api_v1_vendors_get",
+        "parameters": [
+          {
+            "name": "regionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Regionid"
+            }
+          },
+          {
+            "name": "guestCount",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "예상 하객 수",
+              "title": "Guestcount"
+            },
+            "description": "예상 하객 수"
+          },
+          {
+            "name": "weddingDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weddingdate"
+            }
+          },
+          {
+            "name": "budget",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "총예산(원). 없으면 예산 적합도 제외",
+              "title": "Budget"
+            },
+            "description": "총예산(원). 없으면 예산 적합도 제외"
+          },
+          {
+            "name": "moods",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "선호 분위기 (반복 파라미터: ?moods=화사한&moods=클래식)",
+              "default": [],
+              "title": "Moods"
+            },
+            "description": "선호 분위기 (반복 파라미터: ?moods=화사한&moods=클래식)"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/VendorSort",
+              "default": "recommended"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 5,
+              "title": "Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vendors/{vendor_id}": {
+      "get": {
+        "tags": [
+          "예식장 후보 조회"
+        ],
+        "summary": "예식장 상세 정보 조회",
+        "operationId": "get_vendor_api_v1_vendors__vendor_id__get",
+        "parameters": [
+          {
+            "name": "vendor_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Vendor Id"
+            }
+          },
+          {
+            "name": "guestCount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "넣으면 그 인원 기준 예상 비용 계산",
+              "title": "Guestcount"
+            },
+            "description": "넣으면 그 인원 기준 예상 비용 계산"
+          },
+          {
+            "name": "weddingDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weddingdate"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HallDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plans": {
+      "post": {
+        "tags": [
+          "사용자 정보 및 계획 저장"
+        ],
+        "summary": "사용자 결혼 계획 저장",
+        "operationId": "create_plan_api_v1_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "로그인 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/plans/me": {
+      "get": {
+        "tags": [
+          "사용자 정보 및 계획 저장"
+        ],
+        "summary": "저장된 계획 조회",
+        "operationId": "get_my_plan_api_v1_plans_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "로그인 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "사용자 정보 및 계획 저장"
+        ],
+        "summary": "지역·하객·예식일·예산 수정",
+        "operationId": "update_my_plan_api_v1_plans_me_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "로그인 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/plans/me/roadmap": {
+      "get": {
+        "tags": [
+          "준비 로드맵"
+        ],
+        "summary": "내 준비 로드맵 전체 조회",
+        "operationId": "get_roadmap_api_v1_plans_me_roadmap_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Roadmap"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "로그인 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/plans/me/roadmap/tasks/{task_id}": {
+      "patch": {
+        "tags": [
+          "준비 로드맵"
+        ],
+        "summary": "체크리스트 완료 상태 수정",
+        "operationId": "update_task_api_v1_plans_me_roadmap_tasks__task_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadmapTask"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "로그인 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plans/me/roadmap/stages/{stage_id}": {
+      "patch": {
+        "tags": [
+          "준비 로드맵"
+        ],
+        "summary": "단계 완료 처리",
+        "operationId": "update_stage_api_v1_plans_me_roadmap_stages__stage_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StageCompleteUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadmapStage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "로그인 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plans/me/budget-items/{category}": {
+      "put": {
+        "tags": [
+          "준비 로드맵"
+        ],
+        "summary": "실제 계약 금액 입력·수정",
+        "operationId": "upsert_budget_item_api_v1_plans_me_budget_items__category__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/BudgetCategory"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetItemUpsert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "로그인 필요",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login/{provider}": {
+      "post": {
+        "tags": [
+          "사용자 정보 및 계획 저장"
+        ],
+        "summary": "소셜 로그인 (카카오/구글)",
+        "description": "프론트가 소셜 인가 코드를 받아 전달 → 서버가 토큰 교환·회원 조회/가입 후 JWT 발급.",
+        "operationId": "social_login_api_v1_auth_login__provider__post",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OAuthProvider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "인가 코드 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "사용자 정보 및 계획 저장"
+        ],
+        "summary": "인증 토큰 갱신",
+        "operationId": "refresh_api_v1_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RefreshRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "사용자 정보 및 계획 저장"
+        ],
+        "summary": "로그아웃",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BudgetCategory": {
+        "type": "string",
+        "enum": [
+          "HALL",
+          "STUDIO",
+          "DRESS",
+          "MAKEUP"
+        ],
+        "title": "BudgetCategory"
+      },
+      "BudgetEstimateRequest": {
+        "properties": {
+          "regionId": {
+            "type": "integer",
+            "title": "Regionid"
+          },
+          "guestRangeId": {
+            "type": "integer",
+            "title": "Guestrangeid"
+          },
+          "weddingDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weddingdate",
+            "description": "예식 시기 (미정이면 null)"
+          },
+          "desiredBudget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desiredbudget",
+            "description": "희망 총예산(원)"
+          },
+          "sdmTier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SdmTier"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "스드메 예산대. 첫 계산 땐 null(서버 기본값), 사용자가 바꾸면 값을 넣어 재계산"
+          }
+        },
+        "type": "object",
+        "required": [
+          "regionId",
+          "guestRangeId"
+        ],
+        "title": "BudgetEstimateRequest"
+      },
+      "BudgetEstimateResponse": {
+        "properties": {
+          "total": {
+            "$ref": "#/components/schemas/PriceRange"
+          },
+          "hall": {
+            "$ref": "#/components/schemas/PriceRange"
+          },
+          "sdm": {
+            "$ref": "#/components/schemas/SdmBreakdown"
+          },
+          "withinBudget": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withinbudget",
+            "description": "희망 예산 대비 적합 여부 (예산 미입력 시 null)"
+          },
+          "basisNote": {
+            "type": "string",
+            "title": "Basisnote",
+            "examples": [
+              "강남구 150~200명 기준, 참가격 통계 + 업체 공개가"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "hall",
+          "sdm",
+          "basisNote"
+        ],
+        "title": "BudgetEstimateResponse"
+      },
+      "BudgetFitStatus": {
+        "type": "string",
+        "enum": [
+          "GOOD",
+          "CAUTION",
+          "OVER"
+        ],
+        "title": "BudgetFitStatus"
+      },
+      "BudgetItem": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/BudgetCategory"
+          },
+          "contractAmount": {
+            "type": "integer",
+            "title": "Contractamount"
+          },
+          "vendorId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendorid"
+          },
+          "memo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "contractAmount",
+          "vendorId",
+          "memo",
+          "updatedAt"
+        ],
+        "title": "BudgetItem"
+      },
+      "BudgetItemUpsert": {
+        "properties": {
+          "contractAmount": {
+            "type": "integer",
+            "title": "Contractamount",
+            "description": "실제 계약 금액(원)"
+          },
+          "vendorId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendorid",
+            "description": "계약한 업체 (선택)"
+          },
+          "memo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contractAmount"
+        ],
+        "title": "BudgetItemUpsert"
+      },
+      "CostItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "식대"
+            ]
+          },
+          "amount": {
+            "$ref": "#/components/schemas/PriceRange"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "examples": [
+              "1인 6.5만~7.5만 × 보증인원 200명"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "amount"
+        ],
+        "title": "CostItem"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorResponse"
+      },
+      "GuestRange": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "examples": [
+              "150~200명"
+            ]
+          },
+          "min": {
+            "type": "integer",
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "상한 없음이면 null"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "min"
+        ],
+        "title": "GuestRange"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HallDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "더채플앳청담"
+            ]
+          },
+          "regionName": {
+            "type": "string",
+            "title": "Regionname"
+          },
+          "minGuests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minguests",
+            "description": "최소 보증인원"
+          },
+          "maxGuests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxguests",
+            "description": "최대 수용인원"
+          },
+          "estimatedPrice": {
+            "$ref": "#/components/schemas/PriceRange",
+            "description": "대관료 + 식대 + 필수 장식비 + 기타 필수 비용 (하객 수·예식 시기 기준)"
+          },
+          "priceSource": {
+            "$ref": "#/components/schemas/PriceSource"
+          },
+          "priceAsOf": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceasof",
+            "description": "가격 기준일"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "분위기 태그"
+          },
+          "thumbnailUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnailurl"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Recommendation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "sort=recommended 일 때만 채워짐"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "websiteUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Websiteurl"
+          },
+          "hallTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Halltypes",
+            "examples": [
+              [
+                "채플",
+                "단독홀"
+              ]
+            ]
+          },
+          "costBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/CostItem"
+            },
+            "type": "array",
+            "title": "Costbreakdown",
+            "description": "예상 비용 항목별 내역"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks",
+            "description": "비고 (빠뜨리기 쉬운 추가 비용 확인용)"
+          },
+          "packages": {
+            "items": {
+              "$ref": "#/components/schemas/HallPackage"
+            },
+            "type": "array",
+            "title": "Packages"
+          },
+          "imageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Imageurls"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "regionName",
+          "estimatedPrice",
+          "priceSource"
+        ],
+        "title": "HallDetail"
+      },
+      "HallPackage": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "주말 2부 패키지"
+            ]
+          },
+          "mealPricePerPerson": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mealpriceperperson"
+          },
+          "rentalFee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rentalfee"
+          },
+          "priceSource": {
+            "$ref": "#/components/schemas/PriceSource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "priceSource"
+        ],
+        "title": "HallPackage"
+      },
+      "HallSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "더채플앳청담"
+            ]
+          },
+          "regionName": {
+            "type": "string",
+            "title": "Regionname"
+          },
+          "minGuests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minguests",
+            "description": "최소 보증인원"
+          },
+          "maxGuests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxguests",
+            "description": "최대 수용인원"
+          },
+          "estimatedPrice": {
+            "$ref": "#/components/schemas/PriceRange",
+            "description": "대관료 + 식대 + 필수 장식비 + 기타 필수 비용 (하객 수·예식 시기 기준)"
+          },
+          "priceSource": {
+            "$ref": "#/components/schemas/PriceSource"
+          },
+          "priceAsOf": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceasof",
+            "description": "가격 기준일"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "분위기 태그"
+          },
+          "thumbnailUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnailurl"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Recommendation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "sort=recommended 일 때만 채워짐"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "regionName",
+          "estimatedPrice",
+          "priceSource"
+        ],
+        "title": "HallSummary"
+      },
+      "MoodMatch": {
+        "type": "string",
+        "enum": [
+          "MATCH",
+          "UNKNOWN",
+          "MISMATCH"
+        ],
+        "title": "MoodMatch"
+      },
+      "OAuthProvider": {
+        "type": "string",
+        "enum": [
+          "kakao",
+          "google"
+        ],
+        "title": "OAuthProvider"
+      },
+      "Plan": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "regionId": {
+            "type": "integer",
+            "title": "Regionid"
+          },
+          "regionName": {
+            "type": "string",
+            "title": "Regionname"
+          },
+          "guestRangeId": {
+            "type": "integer",
+            "title": "Guestrangeid"
+          },
+          "guestRangeLabel": {
+            "type": "string",
+            "title": "Guestrangelabel"
+          },
+          "weddingDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weddingdate"
+          },
+          "desiredBudget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desiredbudget"
+          },
+          "sdmTier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SdmTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "moods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Moods"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "regionId",
+          "regionName",
+          "guestRangeId",
+          "guestRangeLabel",
+          "weddingDate",
+          "desiredBudget",
+          "sdmTier",
+          "moods",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "Plan"
+      },
+      "PlanCreate": {
+        "properties": {
+          "regionId": {
+            "type": "integer",
+            "title": "Regionid"
+          },
+          "guestRangeId": {
+            "type": "integer",
+            "title": "Guestrangeid"
+          },
+          "weddingDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weddingdate"
+          },
+          "desiredBudget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desiredbudget"
+          },
+          "sdmTier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SdmTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "moods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Moods",
+            "description": "희망 예식장 분위기 (미선택이면 [])"
+          }
+        },
+        "type": "object",
+        "required": [
+          "regionId",
+          "guestRangeId"
+        ],
+        "title": "PlanCreate"
+      },
+      "PlanUpdate": {
+        "properties": {
+          "regionId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regionid"
+          },
+          "guestRangeId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guestrangeid"
+          },
+          "weddingDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weddingdate"
+          },
+          "desiredBudget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desiredbudget"
+          },
+          "sdmTier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SdmTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "moods": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moods"
+          }
+        },
+        "type": "object",
+        "title": "PlanUpdate",
+        "description": "보낸 필드만 수정 (PATCH)."
+      },
+      "PriceRange": {
+        "properties": {
+          "min": {
+            "type": "integer",
+            "title": "Min"
+          },
+          "max": {
+            "type": "integer",
+            "title": "Max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min",
+          "max"
+        ],
+        "title": "PriceRange"
+      },
+      "PriceSource": {
+        "type": "string",
+        "enum": [
+          "VENDOR_OFFICIAL",
+          "USER_CONTRACT",
+          "EXTERNAL_REFERENCE"
+        ],
+        "title": "PriceSource"
+      },
+      "Recommendation": {
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Rank"
+          },
+          "score": {
+            "$ref": "#/components/schemas/ScoreBreakdown"
+          },
+          "budgetFitStatus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetFitStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "예산 미입력 시 null"
+          },
+          "moodMatch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoodMatch"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "분위기 미선택 시 null"
+          },
+          "capacityRate": {
+            "type": "number",
+            "title": "Capacityrate",
+            "description": "예상 하객 수 / 최대 수용인원 × 100"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "examples": [
+              [
+                "예식장 배분 예산 안에서 이용 가능",
+                "선택한 '화사한' 분위기와 일치"
+              ]
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "rank",
+          "score",
+          "capacityRate",
+          "reasons"
+        ],
+        "title": "Recommendation"
+      },
+      "RefreshRequest": {
+        "properties": {
+          "refreshToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshtoken",
+            "description": "쿠키 방식으로 가면 body 없이 쿠키로 받음 (미정)"
+          }
+        },
+        "type": "object",
+        "title": "RefreshRequest"
+      },
+      "Region": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "강남구"
+            ]
+          },
+          "parentName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentname",
+            "examples": [
+              "서울"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Region"
+      },
+      "Roadmap": {
+        "properties": {
+          "planId": {
+            "type": "integer",
+            "title": "Planid"
+          },
+          "progressPercent": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progresspercent"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/RoadmapStage"
+            },
+            "type": "array",
+            "title": "Stages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "planId",
+          "progressPercent",
+          "stages"
+        ],
+        "title": "Roadmap"
+      },
+      "RoadmapStage": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "order": {
+            "type": "integer",
+            "title": "Order"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "examples": [
+              "D-300 예식장 계약"
+            ]
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Completed"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/RoadmapTask"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "order",
+          "title",
+          "completed",
+          "tasks"
+        ],
+        "title": "RoadmapStage"
+      },
+      "RoadmapTask": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "examples": [
+              "웨딩홀 투어 3곳 이상"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "dueDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duedate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status"
+        ],
+        "title": "RoadmapTask"
+      },
+      "ScoreBreakdown": {
+        "properties": {
+          "budgetFit": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 40.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budgetfit",
+            "description": "예산 적합도 (최대 40)"
+          },
+          "moodMatch": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 30.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moodmatch",
+            "description": "분위기 일치도 (최대 30)"
+          },
+          "priceCompetitiveness": {
+            "type": "number",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Pricecompetitiveness",
+            "description": "가격 경쟁력 (최대 20)"
+          },
+          "scaleFit": {
+            "type": "number",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Scalefit",
+            "description": "규모 적합도 (최대 10)"
+          },
+          "total": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "priceCompetitiveness",
+          "scaleFit",
+          "total"
+        ],
+        "title": "ScoreBreakdown",
+        "description": "각 항목 원점수. 입력 누락 항목은 null, total은 100점 기준으로 환산된 값."
+      },
+      "SdmBreakdown": {
+        "properties": {
+          "tier": {
+            "$ref": "#/components/schemas/SdmTier"
+          },
+          "studio": {
+            "$ref": "#/components/schemas/PriceRange"
+          },
+          "dress": {
+            "$ref": "#/components/schemas/PriceRange"
+          },
+          "makeup": {
+            "$ref": "#/components/schemas/PriceRange"
+          },
+          "total": {
+            "$ref": "#/components/schemas/PriceRange"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tier",
+          "studio",
+          "dress",
+          "makeup",
+          "total"
+        ],
+        "title": "SdmBreakdown"
+      },
+      "SdmTier": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MID",
+          "HIGH"
+        ],
+        "title": "SdmTier"
+      },
+      "SocialLoginRequest": {
+        "properties": {
+          "authorizationCode": {
+            "type": "string",
+            "title": "Authorizationcode",
+            "description": "프론트가 소셜 로그인 콜백에서 받은 인가 코드"
+          },
+          "redirectUri": {
+            "type": "string",
+            "title": "Redirecturi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorizationCode",
+          "redirectUri"
+        ],
+        "title": "SocialLoginRequest"
+      },
+      "StageCompleteUpdate": {
+        "properties": {
+          "completed": {
+            "type": "boolean",
+            "title": "Completed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "completed"
+        ],
+        "title": "StageCompleteUpdate"
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "TODO",
+          "DONE"
+        ],
+        "title": "TaskStatus"
+      },
+      "TaskStatusUpdate": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "TaskStatusUpdate"
+      },
+      "TokenResponse": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          },
+          "tokenType": {
+            "type": "string",
+            "title": "Tokentype",
+            "default": "bearer"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "title": "Expiresin",
+            "description": "access 토큰 만료(초)"
+          },
+          "isNewUser": {
+            "type": "boolean",
+            "title": "Isnewuser",
+            "description": "첫 로그인이면 true → 프론트가 계획 입력 화면으로 이동"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken",
+          "expiresIn",
+          "isNewUser"
+        ],
+        "title": "TokenResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VendorListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HallSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "hallBudget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hallbudget",
+            "description": "예산 적합도 계산에 쓴 예식장 배분 예산 (총예산 × 배분율)"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "예산 안에 드는 업체가 없을 때 등 안내 문구",
+            "examples": [
+              "예산 안에 드는 예식장이 없어요. 예산을 조정하거나 지역을 넓혀보세요."
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size"
+        ],
+        "title": "VendorListResponse"
+      },
+      "VendorSort": {
+        "type": "string",
+        "enum": [
+          "recommended",
+          "price_asc",
+          "price_desc"
+        ],
+        "title": "VendorSort"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "소셜 로그인으로 받은 accessToken",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "예상 비용 계산"
+    },
+    {
+      "name": "예식장 후보 조회"
+    },
+    {
+      "name": "준비 로드맵"
+    },
+    {
+      "name": "사용자 정보 및 계획 저장"
+    }
+  ]
+}
