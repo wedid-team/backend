@@ -1,0 +1,15 @@
+# IntelliJ
+.idea/
+*.iml
+
+# Gradle
+.gradle/
+build/
+
+# Java
+*.class
+
+# Environment
+.env
+.env.*
+!.env.example
