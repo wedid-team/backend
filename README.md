@@ -17,7 +17,7 @@ WEDID 백엔드
    처음 띄운 직후에는 테이블이 없는 빈 DB이므로, `sql/` 폴더의 스키마를 순서대로 적용해주세요.
    (`spring.jpa.hibernate.ddl-auto=validate`라 테이블이 없으면 애플리케이션이 기동하지 않습니다.)
    ```
-   for f in sql/*.sql; do docker exec -i backend-db-1 psql -U postgres -d wedid -v ON_ERROR_STOP=1 < "$f"; done
+   for f in sql/*.sql; do docker compose exec -T db psql -U postgres -d wedid -v ON_ERROR_STOP=1 < "$f"; done
    ```
 
 2. 환경변수 설정
