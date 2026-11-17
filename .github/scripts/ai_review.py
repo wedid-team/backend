@@ -22,7 +22,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 INSTRUCTIONS_PATH = ".github/ai-review-instructions.md"
-SKIP_FILES = {"pnpm-lock.yaml", "package-lock.json", "yarn.lock", "gradlew", "gradlew.bat"}  # 자동 생성 파일은 리뷰하지 않음
+SKIP_FILES = {"pnpm-lock.yaml", "package-lock.json", "yarn.lock", "gradlew", "gradlew.bat", "gradle-wrapper.properties"}  # 자동 생성 파일은 리뷰하지 않음
 SEVERITIES = ("High", "Medium", "Low")
 SEVERITY_ICON = {"High": "🔴", "Medium": "🟠", "Low": "🟡"}  # 댓글에 표시할 때만 붙임 (AI 답에는 없음)
 DEFAULT_BAZE_URL = "https://api.baze.co/v1/gateway"
