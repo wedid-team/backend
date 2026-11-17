@@ -48,7 +48,7 @@ jobs:
           REASONING_EFFORT: ${{ github.base_ref == 'develop' && 'low' || 'medium' }}
           JSON_SCHEMA: "1"     # 답을 리뷰 JSON 형식으로 강제 (gpt-6-luna 지원 확인함)
           CHUNK_LINES: "1000"  # AI 한 번에 보낼 diff 최대 줄 수
-          MAX_CALLS: "5"       # PR 하나당 AI 호출 상한 (비용 안전장치)
+          MAX_CALLS: "5"       # PR 하나당 리뷰 묶음(chunk) 상한. 실패 시 재시도 때문에 실제 호출 수는 최대 2배까지 늘 수 있음 (비용 안전장치, with_retry 참고)
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

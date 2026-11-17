@@ -82,7 +82,12 @@ def http_json(method, url, headers, data=None, timeout=60):
 
 
 def with_retry(call, label):
-    """call()을 실행한다. 429·5xx·연결 실패면 한 번만 다시 시도하고, 그래도 실패하면 ApiError."""
+    """call()을 실행한다. 429·5xx·연결 실패면 한 번만 다시 시도하고, 그래도 실패하면 ApiError.
+
+    주의: 재시도 때문에 묶음(chunk) 하나당 실제 API 호출이 최대 2번까지 갈 수 있다.
+    MAX_CALLS는 묶음 개수 상한이라, 실패가 반복되면 실제 호출 수가 MAX_CALLS의 최대 2배까지
+    늘어날 수 있다 (정상 동작 시에는 발생하지 않음).
+    """
     for attempt in (1, 2):
         try:
             return call()
