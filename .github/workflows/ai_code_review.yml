@@ -15,7 +15,10 @@ concurrency:
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false   # 초안 PR은 건너뜀
+    # 초안 PR은 건너뜀. 포크에서 온 PR은 비밀값(BAZE_API_KEY)을 받지 못하므로 건너뜀
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read          # 코드 읽기

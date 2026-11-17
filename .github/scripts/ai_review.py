@@ -369,6 +369,9 @@ def main():
             print(f"\n===== 묶음 {i} =====\n{chunk}")
         print(f"\n리뷰하지 못한 파일: {skipped or '없음'}")
         return
+    if not dry_run and not os.environ.get("BAZE_API_KEY"):  # Secrets 미등록 시 실패 대신 안내만
+        print("BAZE_API_KEY가 없어 AI 리뷰를 건너뜁니다. Settings → Secrets and variables → Actions에 등록하세요.")
+        return
     if not model:
         sys.exit("MODEL이 비어 있습니다. ai_code_review.yml의 MODEL을 확인하세요.")
 

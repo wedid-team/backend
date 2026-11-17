@@ -19,6 +19,8 @@ PR의 변경 내용(diff)을 보고 한국어로 리뷰한다.
 - 커밋 메시지와 PR 제목은 `<종류>: <내용>` 형식 (feat, fix, test, docs, refactor, chore)
 - DB 스키마는 `sql/` 폴더의 번호 붙은 SQL 파일(`NNN_설명.sql`)로만 바꾼다. JPA 자동 생성(`ddl-auto`)으로 테이블을 만들거나 바꾸지 않는다.
 - 이미 있는 `sql/` 파일은 고치지 않고, 바꿀 내용은 다음 번호의 새 파일로 추가한다.
+- `spring.jpa.hibernate.ddl-auto`는 `validate`로 둔다. `create`, `create-drop`, `update`로 바꾸지 않는다.
+- `ddl-auto=validate`라서 엔티티의 테이블·컬럼 매핑을 바꾸면 같은 PR에 그에 맞는 새 `sql/` 파일이 있어야 한다. 없으면 서버가 시작하지 못한다.
 - DB 접속 정보, OAuth 키 같은 비밀값은 `application.properties`에 직접 적지 않고 환경변수(`${...}`)로 받는다.
 - 컨트롤러는 요청·응답 처리만 하고, 비즈니스 로직은 서비스에 둔다.
 
