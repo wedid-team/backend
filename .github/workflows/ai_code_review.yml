@@ -15,9 +15,14 @@ concurrency:
 
 jobs:
   review:
-    # 초안 PR은 건너뜀. 포크에서 온 PR은 비밀값(BAZE_API_KEY)을 받지 못하므로 건너뜀.
-    # (같은 저장소 PR이 ai_review.py 자체를 고쳐서 비밀값을 유출하는 경로는, 아래
-    # "신뢰된 스크립트로 교체" 스텝에서 base 브랜치 버전으로 덮어써서 막는다.)
+    # 초안 PR은 건너뜀. 포크에서 온 PR은 비밀값(BAZE_API_KEY)을 받지 못하므로 건너뜀
+    #
+    # 알려진 리스크(허용함): 이 조건은 "외부인의 포크 PR"만 막는다. 같은 저장소의 팀원이 이
+    # 스크립트(ai_review.py) 자체를 고친 PR을 올리면, 고친 스크립트가 BAZE_API_KEY를 들고
+    # 그대로 실행된다 (PR head를 체크아웃해서 실행하기 때문). 정석적인 해결책은
+    # pull_request_target으로 바꿔서 base 브랜치의 신뢰된 스크립트만 실행하고 PR 코드는
+    # diff 데이터로만 쓰는 것이지만, 소수의 신뢰된 팀원만 PR을 올리는 소규모 팀이라
+    # 지금은 이 리스크를 받아들이고 구현 복잡도를 낮추는 쪽을 선택함.
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
@@ -33,23 +38,6 @@ jobs:
           # 기본값(develop과 미리 합쳐 본 커밋)이 아니라 PR 브랜치 최신 커밋을 받는다.
           # 그래야 줄 번호가 PR 파일의 실제 줄 번호와 맞아 줄 댓글이 제자리에 달린다.
           ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: 신뢰된 스크립트로 교체
-        # PR이 ai_review.py/지시문을 고쳐도 그 수정본은 실행되지 않고, 항상
-        # base 브랜치(main/develop)에 이미 머지된 버전만 비밀값과 함께 실행된다.
-        # (diff 비교 대상인 git 기록 자체는 안 바뀌므로 리뷰 결과에는 영향 없음)
-        # ai_review.py를 고치는 PR은 이 스텝 때문에 자기 자신의 새 버전으로는
-        # 리뷰가 안 돌고 머지 전 버전으로 돈다 — 로컬 --dry-run으로 미리 확인할 것.
-        # base에 파일이 아직 없으면(이 봇을 처음 도입하는 PR) 그대로 둔다 — git show를
-        # 실패한 채로 리다이렉트하면 파일이 빈 채로 덮여써지므로 존재 여부를 먼저 확인한다.
-        run: |
-          for f in .github/scripts/ai_review.py .github/ai-review-instructions.md; do
-            if git cat-file -e "origin/${{ github.base_ref }}:$f" 2>/dev/null; then
-              git show "origin/${{ github.base_ref }}:$f" > "$f"
-            else
-              echo "origin/${{ github.base_ref }}에 $f 없음 — PR 버전 그대로 사용"
-            fi
-          done
 
       - name: AI review
         env:
