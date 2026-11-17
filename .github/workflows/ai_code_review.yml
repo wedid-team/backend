@@ -48,7 +48,13 @@ jobs:
           REASONING_EFFORT: ${{ github.base_ref == 'develop' && 'low' || 'medium' }}
           JSON_SCHEMA: "1"     # 답을 리뷰 JSON 형식으로 강제 (gpt-6-luna 지원 확인함)
           CHUNK_LINES: "1000"  # AI 한 번에 보낼 diff 최대 줄 수
-          MAX_CALLS: "5"       # PR 하나당 리뷰 묶음(chunk) 상한. 실패 시 재시도 때문에 실제 호출 수는 최대 2배까지 늘 수 있음 (비용 안전장치, with_retry 참고)
+          # 이번 실행(푸시 1번) 기준 리뷰 묶음(chunk) 상한. PR 전체 누적이 아니라 synchronize
+          # 이벤트(새 커밋 push)마다 다시 최대 이만큼 호출된다 — 커밋을 여러 번 올리면
+          # PR 하나의 총 호출 수는 이 값의 여러 배가 될 수 있다. 실패 시 재시도로 실행당
+          # 호출 수도 최대 2배까지 늘 수 있음 (with_retry 참고). PR당 누적 상한이 필요하면
+          # 이전 실행 횟수를 어딘가(예: PR 댓글, 외부 스토리지)에 저장해 추적해야 하는데,
+          # 그 복잡도까지는 지금 안 들이기로 함.
+          MAX_CALLS: "5"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

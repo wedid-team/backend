@@ -11,6 +11,9 @@
     MAX_TOKENS        AI 답의 최대 토큰 (기본 16000. 추론 모델은 생각에 쓴 토큰도 여기서 빠짐)
     REASONING_EFFORT  low | medium | high. 비우면 보내지 않음 (지원하는 모델만)
     JSON_SCHEMA       1이면 답을 JSON 스키마로 강제 (지원하는 모델만)
+
+단위 테스트 (diff 파싱·청크 분할·댓글 조합 로직): test_ai_review.py
+    python .github/scripts/test_ai_review.py -v
 """
 import json
 import os
