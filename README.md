@@ -24,7 +24,8 @@ WEDID 백엔드
    ```
    cp .env.example .env
    ```
-   `.env` 파일을 열어 `WEDID_IMPORT_DIRECTORY` 등 필요한 값을 채워주세요.
+   `.env` 파일을 열어 `WEDID_IMPORT_DIRECTORY`, `DB_PASSWORD` 등 필요한 값을 채워주세요.
+   (`DB_PASSWORD`는 보안 규칙상 기본값이 없어 설정하지 않으면 애플리케이션이 기동하지 않습니다.)
    `.env`는 애플리케이션 실행 시 자동으로 로드되며 git에는 커밋되지 않습니다.
 
 3. 애플리케이션 실행
