@@ -36,6 +36,7 @@ dependencies {
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	implementation 'org.apache.poi:poi-ooxml:6.0.0' // XLSX 엑셀 파일을 읽기 위한 라이브러리
 	implementation 'commons-codec:commons-codec:1.23.0' // // POI와 함께 사용하는 Commons Codec 버전 지정
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
 }
 
 tasks.named('test') {
