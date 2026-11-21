@@ -488,13 +488,6 @@ public class HallService {
                         .filter(tag -> !tag.isEmpty())
                         .toList();
 
-        // 6. 최신 가격 출처 조회
-        PriceRecord latestRecord = records.stream()
-                .filter(record -> record.getPublishedAt() != null)
-                .max(java.util.Comparator.comparing(
-                        PriceRecord::getPublishedAt
-                ))
-                .orElse(null);
 
         // 7. 가격 공개 여부
         boolean hasPublishedPrice = details.stream()
@@ -510,6 +503,7 @@ public class HallService {
             throw new IllegalArgumentException("Invalid guest range");
         }
 
+
         // 업체에 연결된 실제 지역 코드 조회
         String regionCode = regionRepository.findById(
                         java.util.Objects.requireNonNull(
@@ -524,7 +518,7 @@ public class HallService {
                         )
                 );
 
-// 해당 지역의 기존 예상 비용 계산 로직 재사용
+        // 해당 지역의 기존 예상 비용 계산 로직 재사용
         var hallPrice = recommendationService.findHallPrices(
                         regionCode,
                         minGuests,
@@ -534,6 +528,30 @@ public class HallService {
                 .filter(price -> price.hallId().equals(hallId))
                 .findFirst()
                 .orElse(null);
+        // 실제 예상 비용 계산에 사용된 가격 기록 ID
+        Set<Long> usedRecordIds = hallPrice == null
+                ? Set.of()
+                : Set.copyOf(hallPrice.priceRecordIds());
+
+        // 실제 계산에 사용된 가격 출처 조회
+        List<HallDetailResponse.PriceSourceResponse> priceSources =
+                records.stream()
+                        .filter(record -> usedRecordIds.contains(record.getId()))
+                        .map(record -> new HallDetailResponse.PriceSourceResponse(
+                                record.getId(),
+                                "wedding_hall_prices".equals(record.getSourceDataset())
+                                        ? "참가격 공개 데이터"
+                                        : record.getSourceDataset(),
+                                record.getSourceUrl() != null
+                                        && (record.getSourceUrl().startsWith("https://")
+                                        || record.getSourceUrl().startsWith("http://"))
+                                        ? record.getSourceUrl()
+                                        : null,
+                                record.getPublishedAt() == null
+                                        ? null
+                                        : record.getPublishedAt().toString()
+                        ))
+                        .toList();
 
         return new HallDetailResponse(
                 hall.getId(),
@@ -549,9 +567,8 @@ public class HallService {
                 hallPrice == null ? null : hallPrice.maxPrice().longValueExact(),
                 hasPublishedPrice ? "AVAILABLE" : "INSUFFICIENT",
                 moodTags,
-                latestRecord == null ? null : latestRecord.getSourceUrl(),
-                latestRecord == null ? null
-                        : latestRecord.getPublishedAt().toString()
+                priceSources
         );
     }
+
 }
