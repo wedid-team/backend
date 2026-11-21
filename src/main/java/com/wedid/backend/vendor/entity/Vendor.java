@@ -123,4 +123,37 @@ public class Vendor {
     public String getOperatingStatusRaw() {
         return operatingStatusRaw;
     }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public String getOfficialUrl() {
+        return officialUrl;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public String getSigunguRaw() {
+        return sigunguRaw;
+    }
+
+    public String getMoodTagsRaw() {
+        return moodTagsRaw;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public LocalDate getPublishedAt() {
+        return publishedAt;
+    }
+
+    public LocalDate getCollectedAt() {
+        return collectedAt;
+    }
+
 }
