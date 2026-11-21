@@ -57,9 +57,25 @@ public class RecommendationService {
             int minBilledGuests,
             int maxBilledGuests,
             boolean fallbackApplied,
-            Integer guaranteedGuests
+            Integer guaranteedGuests,
+            List<Long> priceRecordIds
     ) {
-        // 기존 6개 인자 생성자와 호환
+        // 기존 7개 인자 생성자 호환
+        public HallPriceResult(
+                Long hallId,
+                BigDecimal minPrice,
+                BigDecimal maxPrice,
+                int minBilledGuests,
+                int maxBilledGuests,
+                boolean fallbackApplied,
+                Integer guaranteedGuests
+        ) {
+            this(hallId, minPrice, maxPrice,
+                    minBilledGuests, maxBilledGuests,
+                    fallbackApplied, guaranteedGuests, List.of());
+        }
+
+        // 기존 6개 인자 생성자 호환
         public HallPriceResult(
                 Long hallId,
                 BigDecimal minPrice,
@@ -68,15 +84,9 @@ public class RecommendationService {
                 int maxBilledGuests,
                 boolean fallbackApplied
         ) {
-            this(
-                    hallId,
-                    minPrice,
-                    maxPrice,
-                    minBilledGuests,
-                    maxBilledGuests,
-                    fallbackApplied,
-                    null
-            );
+            this(hallId, minPrice, maxPrice,
+                    minBilledGuests, maxBilledGuests,
+                    fallbackApplied, null, List.of());
         }
     }
 
@@ -174,6 +184,11 @@ public class RecommendationService {
                             .max()
                             .orElseThrow();
 
+                    List<Long> selectedRecordIds = selected.stream()
+                            .map(HallPriceDetail::getPriceRecordId)
+                            .distinct()
+                            .toList();
+
                     return new HallPriceResult(
                             hallId,
                             minPrice,
@@ -181,7 +196,8 @@ public class RecommendationService {
                             minBilledGuests,
                             maxBilledGuests,
                             fallbackApplied,
-                            guaranteedGuests
+                            guaranteedGuests,
+                            selectedRecordIds
                     );
                 })
                 .filter(Objects::nonNull)

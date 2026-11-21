@@ -16,7 +16,12 @@ public record HallDetailResponse(
         Long estimatedMaxPrice,
         String informationStatus,
         List<String> moodTags,
-        String priceSourceUrl,
-        String pricePublishedAt
+        List<PriceSourceResponse> priceSources
 ) {
+    public record PriceSourceResponse(
+            Long priceRecordId,
+            String sourceName,
+            String sourceUrl,
+            String publishedAt
+    ) {}
 }
