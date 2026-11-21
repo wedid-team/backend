@@ -26,7 +26,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/regions",
                                 "/api/v1/guest-ranges",
-                                "/api/v1/moods"
+                                "/api/v1/moods",
+                                "/api/v1/halls"
                         ).permitAll()
                         .requestMatchers(HttpMethod.POST,
                                 "/api/v1/estimates"
