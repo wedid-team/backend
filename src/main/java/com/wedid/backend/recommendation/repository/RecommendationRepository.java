@@ -119,4 +119,28 @@ public interface RecommendationRepository
             @Param("regionCode") String regionCode,
             @Param("guestCount") int guestCount
     );
+    // 4. 대관료와 식대가 모두 공개된 예식장 ID 조회
+    @Query(value = """
+        SELECT DISTINCT h.id
+        FROM halls h
+        JOIN vendors v
+            ON v.id = h.vendor_id
+        JOIN regions r
+            ON r.id = v.region_id
+        JOIN price_records pr
+            ON pr.hall_id = h.id
+        JOIN hall_price_details hpd
+            ON hpd.price_record_id = pr.id
+        WHERE v.category = 'WEDDING_HALL'
+          AND v.operating_status_raw = U&'\\C6B4\\C601'
+          AND r.code = :regionCode
+          AND hpd.rental_min IS NOT NULL
+          AND hpd.rental_max IS NOT NULL
+          AND hpd.meal_min IS NOT NULL
+          AND hpd.meal_max IS NOT NULL
+        ORDER BY h.id
+        """, nativeQuery = true)
+    List<Long> findPricePublishedHallIds(
+            @Param("regionCode") String regionCode
+    );
 }
