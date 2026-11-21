@@ -77,15 +77,24 @@ public class HallPriceSelector {
         Short start = detail.getStartMonth();
         Short end = detail.getEndMonth();
 
-        if (start != null && month < start) {
-            return false;
+        if (start == null && end == null) {
+            return true;
         }
 
-        if (end != null && month > end) {
-            return false;
+        if (start == null) {
+            return month <= end;
         }
 
-        return true;
+        if (end == null) {
+            return month >= start;
+        }
+
+        if (start <= end) {
+            return month >= start && month <= end;
+        }
+
+        // 11월~2월처럼 연도를 넘어가는 경우
+        return month >= start || month <= end;
     }
 
     private boolean matchesWeekday(
@@ -105,6 +114,10 @@ public class HallPriceSelector {
         if ("주말".equals(weekday)) {
             return dayOfWeek == DayOfWeek.SATURDAY
                     || dayOfWeek == DayOfWeek.SUNDAY;
+        }
+
+        if ("일요일".equals(weekday)) {
+            return dayOfWeek == DayOfWeek.SUNDAY;
         }
 
         return false;

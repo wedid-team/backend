@@ -25,6 +25,9 @@ import com.wedid.backend.vendor.entity.PriceRecord;
 import com.wedid.backend.vendor.repository.HallPriceDetailRepository;
 import com.wedid.backend.vendor.repository.PriceRecordRepository;
 import java.util.Set;
+import com.wedid.backend.vendor.dto.HallDetailResponse;
+import com.wedid.backend.estimate.region.Region;
+import com.wedid.backend.estimate.region.RegionRepository;
 
 @Service
 @Transactional(readOnly = true)
@@ -36,6 +39,7 @@ public class HallService {
     private final RecommendationService recommendationService;
     private final PriceRecordRepository priceRecordRepository;
     private final HallPriceDetailRepository hallPriceDetailRepository;
+    private final RegionRepository regionRepository;
 
     public HallService(
             HallRepository hallRepository,
@@ -43,7 +47,8 @@ public class HallService {
             RecommendationRepository recommendationRepository,
             RecommendationService recommendationService,
             PriceRecordRepository priceRecordRepository,
-            HallPriceDetailRepository hallPriceDetailRepository
+            HallPriceDetailRepository hallPriceDetailRepository,
+            RegionRepository regionRepository
     ) {
         this.hallRepository = hallRepository;
         this.vendorRepository = vendorRepository;
@@ -51,6 +56,7 @@ public class HallService {
         this.recommendationService = recommendationService;
         this.priceRecordRepository = priceRecordRepository;
         this.hallPriceDetailRepository = hallPriceDetailRepository;
+        this.regionRepository = regionRepository;
     }
 
 
@@ -64,7 +70,9 @@ public class HallService {
             int size,
             String sort,
             Long userBudget,
-            Set<String> preferredMoods
+            Set<String> preferredMoods,
+            Set<String> moodFilters,
+            String priceVisibility
 
 
     ) {
@@ -91,6 +99,11 @@ public class HallService {
         // 1. 정상 예식장과 예상 비용 조회
         var prices = recommendationService.findHallPrices(
                 regionCode, minGuests, maxGuests, weddingDate
+        );
+
+        // 공개 가격이 있는 예식장 ID 조회
+        Set<Long> publishedHallIds = Set.copyOf(
+                recommendationRepository.findPricePublishedHallIds(regionCode)
         );
 
         // 2. 정보 부족 예식장 ID 조회
@@ -208,11 +221,32 @@ public class HallService {
 
                                 )
                         ));
+        // 분위기 필터에 일치하는 홀 ID
+        Set<Long> moodMatchedIds = halls.keySet().stream()
+                .filter(hallId ->
+                        moodFilters == null || moodFilters.isEmpty()
+                                || hallMoodsById.getOrDefault(hallId, Set.of())
+                                .stream()
+                                .anyMatch(moodFilters::contains)
+                )
+                .collect(Collectors.toSet());
+
+// 가격 공개 여부 필터 검증
+        if (!Set.of("ALL", "PUBLISHED", "UNPUBLISHED")
+                .contains(priceVisibility)) {
+            throw new IllegalArgumentException(
+                    "Unsupported price visibility: " + priceVisibility
+            );
+        }
 
 
 
         // 4. 정상 예식장 DTO 생성
         List<HallSummaryResponse> available = prices.stream()
+                .filter(price -> moodMatchedIds.contains(price.hallId()))
+                .filter(price -> matchesPriceVisibility(
+                        price.hallId(), publishedHallIds, priceVisibility
+                ))
                 .map(price -> {
                     Hall hall = halls.get(price.hallId());
                     if (hall == null) {
@@ -251,11 +285,15 @@ public class HallService {
                 .toList();
 
         // 5. 정상 예식장과 겹치지 않도록 분리
-        Set<Long> availableIds = available.stream()
-                .map(HallSummaryResponse::hallId)
+        Set<Long> availableIds = prices.stream()
+                .map(RecommendationService.HallPriceResult::hallId)
                 .collect(Collectors.toSet());
 
         List<HallSummaryResponse> insufficient = insufficientIds.stream()
+                .filter(moodMatchedIds::contains)
+                .filter(id -> matchesPriceVisibility(
+                        id, publishedHallIds, priceVisibility
+                ))
                 .filter(id -> !availableIds.contains(id))
                 .map(id -> {
                     Hall hall = halls.get(id);
@@ -376,5 +414,144 @@ public class HallService {
                 hasNext
         );
 
+    }
+    private boolean matchesPriceVisibility(
+            Long hallId,
+            Set<Long> publishedHallIds,
+            String priceVisibility
+    ) {
+        return switch (priceVisibility) {
+            case "ALL" -> true;
+            case "PUBLISHED" -> publishedHallIds.contains(hallId);
+            case "UNPUBLISHED" -> !publishedHallIds.contains(hallId);
+            default -> throw new IllegalArgumentException(
+                    "Unsupported price visibility: " + priceVisibility
+            );
+        };
+    }
+    public HallDetailResponse getHallDetail(
+            Long hallId,
+            int minGuests,
+            int maxGuests,
+            LocalDate weddingDate
+    ) {
+
+        // 1. 예식장 조회
+        Hall hall = hallRepository.findById(hallId)
+                .orElseThrow(() ->
+                        new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.NOT_FOUND,
+                                "Hall not found: " + hallId
+                        )
+                );
+
+
+        // 2. 업체 조회
+        Vendor vendor = vendorRepository.findById(hall.getVendorId())
+                .orElseThrow(() ->
+                        new IllegalStateException("Vendor not found")
+                );
+
+        // 3. 가격 기록 조회
+        List<PriceRecord> records =
+                priceRecordRepository.findByHallId(hallId);
+
+        List<Long> recordIds = records.stream()
+                .map(PriceRecord::getId)
+                .toList();
+
+        List<HallPriceDetail> details = recordIds.isEmpty()
+                ? List.of()
+                : hallPriceDetailRepository.findByPriceRecordIdIn(recordIds);
+
+        // 4. 수용 인원 조회
+        Integer capacityMin = details.stream()
+                .map(HallPriceDetail::getCapacityMin)
+                .filter(java.util.Objects::nonNull)
+                .min(Integer::compareTo)
+                .orElse(null);
+
+        Integer capacityMax = details.stream()
+                .map(HallPriceDetail::getCapacityMax)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(null);
+
+        // 5. 분위기 태그
+        List<String> moodTags =
+                vendor.getMoodTagsRaw() == null
+                        ? List.of()
+                        : java.util.Arrays.stream(
+                                vendor.getMoodTagsRaw().split(",")
+                        )
+                        .map(String::trim)
+                        .filter(tag -> !tag.isEmpty())
+                        .toList();
+
+        // 6. 최신 가격 출처 조회
+        PriceRecord latestRecord = records.stream()
+                .filter(record -> record.getPublishedAt() != null)
+                .max(java.util.Comparator.comparing(
+                        PriceRecord::getPublishedAt
+                ))
+                .orElse(null);
+
+        // 7. 가격 공개 여부
+        boolean hasPublishedPrice = details.stream()
+                .anyMatch(detail ->
+                        detail.getRentalMin() != null
+                                && detail.getRentalMax() != null
+                                && detail.getMealMin() != null
+                                && detail.getMealMax() != null
+                );
+
+        // 8. 예상 비용 계산
+        if (minGuests <= 0 || maxGuests < minGuests) {
+            throw new IllegalArgumentException("Invalid guest range");
+        }
+
+        // 업체에 연결된 실제 지역 코드 조회
+        String regionCode = regionRepository.findById(
+                        java.util.Objects.requireNonNull(
+                                vendor.getRegionId(),
+                                "Vendor regionId is missing"
+                        )
+                )
+                .map(Region::getCode)
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Region not found for vendor: " + vendor.getId()
+                        )
+                );
+
+// 해당 지역의 기존 예상 비용 계산 로직 재사용
+        var hallPrice = recommendationService.findHallPrices(
+                        regionCode,
+                        minGuests,
+                        maxGuests,
+                        weddingDate
+                ).stream()
+                .filter(price -> price.hallId().equals(hallId))
+                .findFirst()
+                .orElse(null);
+
+        return new HallDetailResponse(
+                hall.getId(),
+                vendor.getId(),
+                hall.getSourceHallName(),
+                vendor.getName(),
+                vendor.getSigunguRaw(),
+                vendor.getAddress(),
+                vendor.getOfficialUrl(),
+                capacityMin,
+                capacityMax,
+                hallPrice == null ? null : hallPrice.minPrice().longValueExact(),
+                hallPrice == null ? null : hallPrice.maxPrice().longValueExact(),
+                hasPublishedPrice ? "AVAILABLE" : "INSUFFICIENT",
+                moodTags,
+                latestRecord == null ? null : latestRecord.getSourceUrl(),
+                latestRecord == null ? null
+                        : latestRecord.getPublishedAt().toString()
+        );
     }
 }

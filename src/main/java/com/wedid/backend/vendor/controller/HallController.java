@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 
 import java.util.Set;
+import com.wedid.backend.vendor.dto.HallDetailResponse;
 
 
 @RestController
@@ -33,7 +34,9 @@ public class HallController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sort,
             @RequestParam(required = false) Long userBudget,
-            @RequestParam(required = false) Set<String> preferredMoods
+            @RequestParam(required = false) Set<String> preferredMoods,
+            @RequestParam(required = false) Set<String> moodFilters,
+            @RequestParam(defaultValue = "ALL") String priceVisibility
 
 
 
@@ -50,10 +53,25 @@ public class HallController {
                 size,
                 sort,
                 userBudget,
-                preferredMoods
+                preferredMoods,
+                moodFilters,
+                priceVisibility
         );
 
 
 
+    }
+    @GetMapping("/{id}")
+    public HallDetailResponse getHallDetail(
+            @PathVariable Long id,
+            @RequestParam int minGuests,
+            @RequestParam int maxGuests,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate weddingDate
+    ) {
+        return hallService.getHallDetail(
+                id, minGuests, maxGuests, weddingDate
+        );
     }
 }

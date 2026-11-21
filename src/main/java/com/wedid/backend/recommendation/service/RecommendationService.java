@@ -97,6 +97,7 @@ public class RecommendationService {
                         regionCode, maxGuests
                 );
 
+
         // 웨딩홀별 가격 기록 그룹화
         Map<Long, List<HallPriceDetail>> grouped =
                 details.stream()
