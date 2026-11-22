@@ -11,6 +11,8 @@ import java.time.LocalDate;
 import java.util.Set;
 import com.wedid.backend.vendor.dto.HallDetailResponse;
 
+import com.wedid.backend.vendor.dto.HallCompareResponse;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/halls")
@@ -74,4 +76,22 @@ public class HallController {
                 id, minGuests, maxGuests, weddingDate
         );
     }
+
+    @GetMapping("/compare")
+    public HallCompareResponse compareHalls(
+            @RequestParam List<Long> hallIds,
+            @RequestParam int minGuests,
+            @RequestParam int maxGuests,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate weddingDate
+    ) {
+        return hallService.compareHalls(
+                hallIds,
+                minGuests,
+                maxGuests,
+                weddingDate
+        );
+    }
+
 }

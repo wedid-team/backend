@@ -155,5 +155,20 @@ public class Vendor {
     public LocalDate getCollectedAt() {
         return collectedAt;
     }
+    public String getMealTypeRaw() {
+        return mealTypeRaw;
+    }
+
+    public String getParkingStatusRaw() {
+        return parkingStatusRaw;
+    }
+
+    public String getStationAccessRaw() {
+        return stationAccessRaw;
+    }
+
+    public String getNotes() {
+        return notes;
+    }
 
 }

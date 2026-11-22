@@ -29,6 +29,8 @@ import com.wedid.backend.vendor.dto.HallDetailResponse;
 import com.wedid.backend.estimate.region.Region;
 import com.wedid.backend.estimate.region.RegionRepository;
 
+import com.wedid.backend.vendor.dto.HallCompareResponse;
+
 @Service
 @Transactional(readOnly = true)
 public class HallService {
@@ -553,6 +555,7 @@ public class HallService {
                         ))
                         .toList();
 
+
         return new HallDetailResponse(
                 hall.getId(),
                 vendor.getId(),
@@ -561,6 +564,11 @@ public class HallService {
                 vendor.getSigunguRaw(),
                 vendor.getAddress(),
                 vendor.getOfficialUrl(),
+                vendor.getPhone(),
+                vendor.getOperatingStatusRaw(),
+                vendor.getMealTypeRaw(),
+                vendor.getParkingStatusRaw(),
+                vendor.getNotes(),
                 capacityMin,
                 capacityMax,
                 hallPrice == null ? null : hallPrice.minPrice().longValueExact(),
@@ -569,6 +577,55 @@ public class HallService {
                 moodTags,
                 priceSources
         );
+
     }
+
+    public HallCompareResponse compareHalls(
+            List<Long> hallIds,
+            int minGuests,
+            int maxGuests,
+            LocalDate weddingDate
+    ) {
+        // 1. 선택 개수 검증
+        if (hallIds == null || hallIds.isEmpty() || hallIds.size() > 3) {
+            throw new IllegalArgumentException(
+                    "You must select between 1 and 3 halls"
+            );
+        }
+
+        // 2. 중복 선택 검증
+        if (hallIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("Invalid hall ID");
+        }
+
+        if (hallIds.stream().distinct().count() != hallIds.size()) {
+            throw new IllegalArgumentException(
+                    "Duplicate hall IDs are not allowed"
+            );
+        }
+
+        // 3. 하객 수 검증
+        if (minGuests <= 0 || maxGuests < minGuests) {
+            throw new IllegalArgumentException("Invalid guest range");
+        }
+
+        // 4. 기존 상세 조회 API 재사용
+        List<HallDetailResponse> halls = hallIds.stream()
+                .map(id -> getHallDetail(
+                        id,
+                        minGuests,
+                        maxGuests,
+                        weddingDate
+                ))
+                .toList();
+
+        // 5. 비교 결과 반환
+        return new HallCompareResponse(
+                halls.size(),
+                3,
+                halls
+        );
+    }
+
 
 }
