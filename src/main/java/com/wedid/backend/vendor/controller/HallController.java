@@ -13,6 +13,7 @@ import com.wedid.backend.vendor.dto.HallDetailResponse;
 
 import com.wedid.backend.vendor.dto.HallCompareResponse;
 import java.util.List;
+import com.wedid.backend.vendor.dto.MarketPriceResponse;
 
 @RestController
 @RequestMapping("/api/v1/halls")
@@ -93,5 +94,23 @@ public class HallController {
                 weddingDate
         );
     }
+
+    @GetMapping("/market-price")
+    public MarketPriceResponse getMarketPrice(
+            @RequestParam String regionCode,
+            @RequestParam int minGuests,
+            @RequestParam int maxGuests,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate weddingDate
+    ) {
+        return hallService.getMarketPrice(
+                regionCode,
+                minGuests,
+                maxGuests,
+                weddingDate
+        );
+    }
+
 
 }
