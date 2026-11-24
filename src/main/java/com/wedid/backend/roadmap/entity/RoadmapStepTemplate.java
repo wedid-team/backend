@@ -71,4 +71,9 @@ public class RoadmapStepTemplate {
     public CostKind getCostKind() {
         return costKind;
     }
+
+    /** 예상 비용과 실제 계약 금액을 가지는 금액 단계(예식장 · 스드메)인지. */
+    public boolean hasCost() {
+        return costKind != CostKind.NONE;
+    }
 }

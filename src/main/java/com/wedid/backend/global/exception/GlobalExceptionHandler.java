@@ -3,6 +3,7 @@ package com.wedid.backend.global.exception;
 
 import com.wedid.backend.plan.service.PlanAlreadyExistsException;
 import com.wedid.backend.plan.service.PlanNotFoundException;
+import com.wedid.backend.roadmap.service.RoadmapItemNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(PlanNotFoundException.class)
     public ResponseEntity<ErrorResponse> handlePlanNotFound(PlanNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoadmapItemNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleRoadmapItemNotFound(RoadmapItemNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse(ex.getMessage()));
     }

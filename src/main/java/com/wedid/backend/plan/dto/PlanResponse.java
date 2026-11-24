@@ -13,7 +13,8 @@ import java.util.UUID;
  * 내 계획(준비 공간). 금액은 모두 원 단위이며, 계산할 수 없거나 미정이면 null이다.
  *
  * @param role      조회한 사람의 역할 (OWNER: 계획을 만든 사람 / PARTNER: 합류한 짝꿍)
- * @param updatedBy 마지막으로 조건 · 단계를 고친 회원 (P-04 "마지막 수정: 짝꿍 · 날짜")
+ * @param updatedBy 조건 변경 시 마지막으로 고친 회원 (P-04 "마지막 수정: 짝꿍 · 날짜").
+ *                  단계 · 할 일의 마지막 수정자는 각 항목의 updatedBy로 따로 둔다
  */
 public record PlanResponse(
         UUID planId,
