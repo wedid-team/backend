@@ -53,6 +53,10 @@ public class PlanStep extends AssignedIdEntity {
     @Column(name = "completed_by")
     private UUID completedBy;
 
+    /** 지난 단계 확인 모달(R-07)을 처리한 조건 버전(plans.schedule_updated_at). 처리 API는 아직 없다 */
+    @Column(name = "overdue_reviewed_for")
+    private OffsetDateTime overdueReviewedFor;
+
     @Column(name = "updated_by", nullable = false)
     private UUID updatedBy;
 
@@ -215,6 +219,10 @@ public class PlanStep extends AssignedIdEntity {
 
     public UUID getCompletedBy() {
         return completedBy;
+    }
+
+    public OffsetDateTime getOverdueReviewedFor() {
+        return overdueReviewedFor;
     }
 
     public UUID getUpdatedBy() {

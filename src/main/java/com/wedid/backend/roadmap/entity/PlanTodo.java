@@ -109,6 +109,10 @@ public class PlanTodo extends AssignedIdEntity {
         return planStepId;
     }
 
+    public Long getTodoTemplateId() {
+        return todoTemplateId;
+    }
+
     public boolean isCompleted() {
         return completed;
     }

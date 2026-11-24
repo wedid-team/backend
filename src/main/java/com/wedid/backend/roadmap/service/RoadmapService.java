@@ -8,7 +8,18 @@ import com.wedid.backend.plan.repository.PlanMemberRepository;
 import com.wedid.backend.plan.repository.PlanRepository;
 import com.wedid.backend.plan.service.PlanNotFoundException;
 import com.wedid.backend.roadmap.dto.BudgetStatusResponse;
+import com.wedid.backend.plan.entity.PlanSchedule;
+import com.wedid.backend.roadmap.dto.RoadmapResponse;
 import com.wedid.backend.roadmap.dto.RoadmapStepResponse;
+import com.wedid.backend.roadmap.entity.TodoTemplate;
+import com.wedid.backend.roadmap.repository.TodoTemplateRepository;
+import com.wedid.backend.user.entity.OAuthAccount;
+import com.wedid.backend.user.entity.OAuthProvider;
+import com.wedid.backend.user.entity.User;
+import com.wedid.backend.user.repository.OAuthAccountRepository;
+import com.wedid.backend.user.repository.UserRepository;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import com.wedid.backend.roadmap.dto.TodoResponse;
 import com.wedid.backend.roadmap.dto.TodoUpdateRequest;
 import com.wedid.backend.roadmap.entity.PlanStep;
@@ -23,7 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -44,12 +60,18 @@ import java.util.stream.Collectors;
 @Service
 public class RoadmapService {
 
+    private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
+
     private final PlanRepository planRepository;
     private final PlanMemberRepository planMemberRepository;
     private final PlanStepRepository planStepRepository;
     private final PlanTodoRepository planTodoRepository;
     private final RoadmapStepTemplateRepository stepTemplateRepository;
     private final EstimateRunRepository estimateRunRepository;
+    private final TodoTemplateRepository todoTemplateRepository;
+    private final UserRepository userRepository;
+    private final OAuthAccountRepository oauthAccountRepository;
+    private final JsonMapper jsonMapper;
     private final Clock clock;
 
     public RoadmapService(
@@ -59,6 +81,10 @@ public class RoadmapService {
             PlanTodoRepository planTodoRepository,
             RoadmapStepTemplateRepository stepTemplateRepository,
             EstimateRunRepository estimateRunRepository,
+            TodoTemplateRepository todoTemplateRepository,
+            UserRepository userRepository,
+            OAuthAccountRepository oauthAccountRepository,
+            JsonMapper jsonMapper,
             Clock clock
     ) {
         this.planRepository = planRepository;
@@ -67,7 +93,154 @@ public class RoadmapService {
         this.planTodoRepository = planTodoRepository;
         this.stepTemplateRepository = stepTemplateRepository;
         this.estimateRunRepository = estimateRunRepository;
+        this.todoTemplateRepository = todoTemplateRepository;
+        this.userRepository = userRepository;
+        this.oauthAccountRepository = oauthAccountRepository;
+        this.jsonMapper = jsonMapper;
         this.clock = clock;
+    }
+
+    /**
+     * 준비 로드맵 전체: 6단계와 단계별 할 일, D-day, 다음 단계, 멤버.
+     * 담당(나 / 짝꿍)은 조회한 사람 기준으로 돌려준다.
+     */
+    @Transactional(readOnly = true)
+    public RoadmapResponse getRoadmap(UUID userId) {
+        Plan plan = myPlan(userId, false);
+        LocalDate today = LocalDate.now(clock.withZone(SERVICE_ZONE));
+        PlanSchedule schedule = plan.schedule();
+        List<PlanMember> members = planMemberRepository.findByPlanId(plan.getId());
+
+        Map<Short, RoadmapStepTemplate> templateById = stepTemplateRepository.findAll().stream()
+                .collect(Collectors.toMap(RoadmapStepTemplate::getId, Function.identity()));
+        List<PlanStep> steps = planStepRepository.findByPlanId(plan.getId()).stream()
+                .filter(step -> templateById.containsKey(step.getStepTemplateId()))
+                .sorted(Comparator.comparing(step -> templateById.get(step.getStepTemplateId()).getSortOrder()))
+                .toList();
+        Map<UUID, List<TodoResponse>> todosByStep = todosByStep(steps, userId, members);
+
+        List<RoadmapResponse.Step> stepResponses = steps.stream()
+                .map(step -> toRoadmapStep(step, templateById.get(step.getStepTemplateId()), plan, today,
+                        todosByStep.getOrDefault(step.getId(), List.of())))
+                .toList();
+        UUID nextStepId = steps.stream()
+                .filter(step -> !step.isCompleted())
+                .map(PlanStep::getId)
+                .findFirst()
+                .orElse(null);
+        int completedCount = (int) steps.stream().filter(PlanStep::isCompleted).count();
+
+        Map<UUID, RoadmapResponse.Member> memberById = toMembers(members);
+        RoadmapResponse.Member partner = members.stream()
+                .filter(member -> !member.getUserId().equals(userId))
+                .map(member -> memberById.get(member.getUserId()))
+                .findFirst()
+                .orElse(null);
+
+        return new RoadmapResponse(
+                plan.getId(),
+                new RoadmapResponse.Wedding(
+                        schedule.datePrecision().toWeddingDateType(),
+                        schedule.effectiveWeddingDate(),
+                        schedule.isEstimatedDate(),
+                        ChronoUnit.DAYS.between(today, schedule.effectiveWeddingDate())),
+                nextStepId,
+                completedCount,
+                stepResponses,
+                memberById.get(userId),
+                partner,
+                plan.getScheduleUpdatedAt()
+        );
+    }
+
+    private Map<UUID, List<TodoResponse>> todosByStep(List<PlanStep> steps, UUID viewerId, List<PlanMember> members) {
+        List<PlanTodo> todos = planTodoRepository.findByPlanStepIdIn(steps.stream().map(PlanStep::getId).toList());
+        Map<Long, Integer> sortOrderByTemplate = todoTemplateRepository
+                .findAllById(todos.stream().map(PlanTodo::getTodoTemplateId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(TodoTemplate::getId, TodoTemplate::getSortOrder));
+
+        return todos.stream()
+                .sorted(Comparator
+                        .comparing((PlanTodo todo) -> sortOrderByTemplate.getOrDefault(todo.getTodoTemplateId(), Integer.MAX_VALUE))
+                        .thenComparing(PlanTodo::getTitleSnapshot))
+                .collect(Collectors.groupingBy(
+                        PlanTodo::getPlanStepId,
+                        Collectors.mapping(todo -> toTodoResponse(todo, viewerId, members), Collectors.toList())));
+    }
+
+    private RoadmapResponse.Step toRoadmapStep(
+            PlanStep step,
+            RoadmapStepTemplate template,
+            Plan plan,
+            LocalDate today,
+            List<TodoResponse> todos
+    ) {
+        boolean overdue = !step.isCompleted() && step.getRecommendedEndDate().isBefore(today);
+        OffsetDateTime reviewedFor = step.getOverdueReviewedFor();
+        boolean overdueReviewed = reviewedFor != null && !reviewedFor.isBefore(plan.getScheduleUpdatedAt());
+
+        return new RoadmapResponse.Step(
+                step.getId(),
+                template.getCode(),
+                template.getTitle(),
+                null,
+                template.getSortOrder(),
+                template.getCostKind().name(),
+                template.getDaysBeforeStart(),
+                template.getDaysBeforeEnd(),
+                step.getRecommendedStartDate(),
+                step.getRecommendedEndDate(),
+                template.hasCost() ? new RoadmapResponse.Amount(step.getEstimatedMin(), step.getEstimatedMax()) : null,
+                step.getActualAmount(),
+                step.isCompleted(),
+                step.getCompletedAt(),
+                step.getCompletedBy(),
+                overdue,
+                overdueReviewed,
+                textItems(template.getDecisionItems()),
+                textItems(template.getGuidanceItems()),
+                null,
+                todos,
+                step.getUpdatedBy(),
+                step.getUpdatedAt()
+        );
+    }
+
+    /** 템플릿 JSON 배열의 문자열 항목. 비어 있거나 읽을 수 없으면 빈 목록. */
+    private List<String> textItems(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        List<String> items = new ArrayList<>();
+        for (JsonNode node : jsonMapper.readTree(json)) {
+            if (node.isString()) {
+                items.add(node.asString());
+            }
+        }
+        return List.copyOf(items);
+    }
+
+    private Map<UUID, RoadmapResponse.Member> toMembers(List<PlanMember> members) {
+        List<UUID> userIds = members.stream().map(PlanMember::getUserId).toList();
+        Map<UUID, User> userById = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        Map<UUID, OAuthProvider> providerByUser = oauthAccountRepository.findByUserIdIn(userIds).stream()
+                .sorted(Comparator.comparing(OAuthAccount::getProvider))
+                .collect(Collectors.toMap(OAuthAccount::getUserId, OAuthAccount::getProvider, (first, second) -> first));
+
+        Map<UUID, RoadmapResponse.Member> result = new HashMap<>();
+        for (PlanMember member : members) {
+            User user = userById.get(member.getUserId());
+            OAuthProvider provider = providerByUser.get(member.getUserId());
+            result.put(member.getUserId(), new RoadmapResponse.Member(
+                    member.getUserId(),
+                    user == null ? null : user.getDisplayName(),
+                    member.getRole().name(),
+                    provider == null ? null : provider.name(),
+                    member.getJoinedAt()));
+        }
+        return result;
     }
 
     /** 할 일 완료 · 미완료, 담당 변경(P-07). 보낸 항목만 바꾼다. */

@@ -3,6 +3,7 @@ package com.wedid.backend.roadmap.controller;
 import com.wedid.backend.auth.web.LoginUser;
 import com.wedid.backend.roadmap.dto.BudgetStatusResponse;
 import com.wedid.backend.roadmap.dto.ContractAmountRequest;
+import com.wedid.backend.roadmap.dto.RoadmapResponse;
 import com.wedid.backend.roadmap.dto.RoadmapStepResponse;
 import com.wedid.backend.roadmap.dto.StepCompletionRequest;
 import com.wedid.backend.roadmap.dto.TodoResponse;
@@ -23,6 +24,7 @@ import java.util.UUID;
 /**
  * 로드맵 진행. 모두 로그인 필요(C-02, SecurityConfig의 나머지 API 인증 규칙).
  * <ul>
+ *   <li>GET /api/v1/plans/me/roadmap: 준비 로드맵 전체 (단계별 할 일 · taskId 포함)</li>
  *   <li>PATCH /api/v1/plans/me/tasks/{taskId}: 할 일 완료 · 미완료, 담당 변경</li>
  *   <li>PATCH /api/v1/plans/me/roadmap/steps/{stepId}: 단계 완료 · 완료 취소</li>
  *   <li>PUT /api/v1/plans/me/contracts/{stepId}: 예식장 · 스드메 실제 계약 금액 입력 · 수정</li>
@@ -37,6 +39,11 @@ public class RoadmapController {
 
     public RoadmapController(RoadmapService roadmapService) {
         this.roadmapService = roadmapService;
+    }
+
+    @GetMapping("/roadmap")
+    public RoadmapResponse getRoadmap(@AuthenticationPrincipal LoginUser loginUser) {
+        return roadmapService.getRoadmap(loginUser.id());
     }
 
     @PatchMapping("/tasks/{taskId}")
