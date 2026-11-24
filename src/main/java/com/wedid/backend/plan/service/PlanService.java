@@ -121,7 +121,7 @@ public class PlanService {
         try {
             // 동시에 두 번 저장해도 부분 UNIQUE(활성 소유 계획) · plan_members(user_id) UNIQUE가 막는다.
             planRepository.saveAndFlush(plan);
-            planMemberRepository.saveAndFlush(PlanMember.owner(plan.getId(), userId));
+            planMemberRepository.saveAndFlush(PlanMember.owner(plan.getId(), userId, now));
         } catch (DataIntegrityViolationException e) {
             // FK 위반 등 다른 무결성 오류까지 "이미 저장된 계획"으로 숨기지 않는다
             if (violatesOnePlanPerUser(e)) {

@@ -67,7 +67,9 @@ public class SecurityConfig {
                                 "/api/v1/moods",
                                 "/api/v1/auth/me",
                                 // 비회원도 스드메 예산대를 바꿀 수 있다 (C-01). 스드메 조합(후보)은 로그인 필요
-                                "/api/v1/sdm/budget-tiers"
+                                "/api/v1/sdm/budget-tiers",
+                                // 초대 링크를 연 화면은 로그인 전에도 보여야 한다 (P-08). 발급·합류는 로그인 필요
+                                "/api/v1/invitations/*"
                                 // 예식장 후보 목록·상세(/api/v1/halls/**)는 로그인 필요 (C-01 · C-02 · R-12)
                         ).permitAll()
 

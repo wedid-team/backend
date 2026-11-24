@@ -1,6 +1,8 @@
 
 package com.wedid.backend.global.exception;
 
+import com.wedid.backend.invitation.service.InvitationConflictException;
+import com.wedid.backend.invitation.service.InvitationExpiredException;
 import com.wedid.backend.plan.service.PlanAlreadyExistsException;
 import com.wedid.backend.plan.service.PlanNotFoundException;
 import com.wedid.backend.roadmap.service.RoadmapItemNotFoundException;
@@ -44,6 +46,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<ErrorResponse> handlePlanAlreadyExists(PlanAlreadyExistsException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvitationExpiredException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationExpired(InvitationExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .body(new ErrorResponse(InvitationExpiredException.CODE, ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvitationConflictException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationConflict(InvitationConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.getCode(), ex.getMessage()));
     }
 
     @Override

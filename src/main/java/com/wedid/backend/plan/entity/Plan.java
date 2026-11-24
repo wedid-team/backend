@@ -119,6 +119,16 @@ public class Plan extends AssignedIdEntity {
         this.updatedAt = now;
     }
 
+    /**
+     * 짝꿍 초대로 다른 계획에 합류하면서 내 계획을 정리한다(P-05 · db.md 5.2).
+     * 기록은 지우지 않고 REPLACED로 두며, 일반 조회에서는 제외된다.
+     * updated_by는 조건을 바꾼 사람만 가리키므로 건드리지 않는다.
+     */
+    public void replace(OffsetDateTime now) {
+        this.status = Status.REPLACED;
+        this.updatedAt = now;
+    }
+
     public void pointTo(UUID estimateId) {
         this.currentEstimateId = estimateId;
     }
