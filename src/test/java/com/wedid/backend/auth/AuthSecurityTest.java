@@ -3,6 +3,7 @@ package com.wedid.backend.auth;
 import com.wedid.backend.auth.controller.AuthController;
 import com.wedid.backend.auth.oauth.OAuthLoginFailureHandler;
 import com.wedid.backend.auth.oauth.OAuthLoginSuccessHandler;
+import com.wedid.backend.auth.service.AuthService;
 import com.wedid.backend.auth.service.InvalidRefreshTokenException;
 import com.wedid.backend.auth.service.OAuthLoginService;
 import com.wedid.backend.auth.service.RefreshTokenService;
@@ -43,6 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AuthController.class)
 @Import({
+        AuthService.class,
         SecurityConfig.class,
         CorsConfig.class,
         ClockConfig.class,

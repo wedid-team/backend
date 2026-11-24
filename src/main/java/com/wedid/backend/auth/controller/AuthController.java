@@ -1,6 +1,7 @@
 package com.wedid.backend.auth.controller;
 
 import com.wedid.backend.auth.dto.AuthMeResponse;
+import com.wedid.backend.auth.service.AuthService;
 import com.wedid.backend.auth.service.InvalidRefreshTokenException;
 import com.wedid.backend.auth.service.RefreshTokenService;
 import com.wedid.backend.auth.service.RefreshTokenService.RotatedRefreshToken;
@@ -8,7 +9,6 @@ import com.wedid.backend.auth.token.AccessTokenProvider;
 import com.wedid.backend.auth.web.AuthCookieManager;
 import com.wedid.backend.auth.web.LoginUser;
 import com.wedid.backend.global.exception.ErrorResponse;
-import com.wedid.backend.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -28,18 +28,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
-    private final UserRepository userRepository;
+    private final AuthService authService;
     private final AccessTokenProvider accessTokenProvider;
     private final RefreshTokenService refreshTokenService;
     private final AuthCookieManager cookieManager;
 
     public AuthController(
-            UserRepository userRepository,
+            AuthService authService,
             AccessTokenProvider accessTokenProvider,
             RefreshTokenService refreshTokenService,
             AuthCookieManager cookieManager
     ) {
-        this.userRepository = userRepository;
+        this.authService = authService;
         this.accessTokenProvider = accessTokenProvider;
         this.refreshTokenService = refreshTokenService;
         this.cookieManager = cookieManager;
@@ -48,12 +48,7 @@ public class AuthController {
     /** 비로그인이어도 401이 아니라 authenticated=false로 응답한다. */
     @GetMapping("/me")
     public AuthMeResponse me(@AuthenticationPrincipal LoginUser loginUser) {
-        if (loginUser == null) {
-            return AuthMeResponse.anonymous();
-        }
-        return userRepository.findById(loginUser.id())
-                .map(user -> AuthMeResponse.of(user.getId(), user.getDisplayName(), user.getEmail()))
-                .orElseGet(AuthMeResponse::anonymous);
+        return authService.me(loginUser);
     }
 
     /** 리프레시 토큰 쿠키로 새 액세스·리프레시 토큰을 발급한다. 실패하면 쿠키를 지우고 401. */
