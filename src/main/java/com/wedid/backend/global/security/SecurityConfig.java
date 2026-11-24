@@ -58,6 +58,7 @@ public class SecurityConfig {
                 .requestCache(cache -> cache.requestCache(new NullRequestCache()))
 
                 .authorizeHttpRequests(auth -> auth
+                        // 비회원 조회 가능 API
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/regions",
                                 "/api/v1/guest-ranges",
@@ -65,23 +66,31 @@ public class SecurityConfig {
                                 "/api/v1/auth/me"
                                 // 예식장 후보 목록·상세(/api/v1/halls/**)는 로그인 필요 (C-01 · C-02 · R-12)
                         ).permitAll()
+
+                        // 비회원 예식장 예상 비용 계산 · 토큰 갱신 · 로그아웃
                         .requestMatchers(HttpMethod.POST,
-                                "/api/v1/estimates",
+                                "/api/v1/estimates/hall",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout"
                         ).permitAll()
+
+                        // 소셜 로그인 시작 · 콜백
                         .requestMatchers(
                                 LOGIN_BASE_URI + "/**",
                                 "/api/v1/auth/callback/**"
                         ).permitAll()
 
+                        // Swagger
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
                                 "/v3/api-docs"
                         ).permitAll()
+
                         .requestMatchers("/error").permitAll()
+
+                        // 나머지 API는 인증 필요
                         .anyRequest().authenticated()
                 )
 

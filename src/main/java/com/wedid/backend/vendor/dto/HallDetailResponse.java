@@ -1,3 +1,4 @@
+
 package com.wedid.backend.vendor.dto;
 
 import java.util.List;
@@ -10,6 +11,11 @@ public record HallDetailResponse(
         String regionName,
         String address,
         String officialUrl,
+        String phone,
+        String operatingStatus,
+        String mealType,
+        String parkingStatus,
+        String notes,
         Integer capacityMin,
         Integer capacityMax,
         Long estimatedMinPrice,

@@ -29,6 +29,9 @@ import com.wedid.backend.vendor.dto.HallDetailResponse;
 import com.wedid.backend.estimate.region.Region;
 import com.wedid.backend.estimate.region.RegionRepository;
 
+import com.wedid.backend.vendor.dto.HallCompareResponse;
+import com.wedid.backend.vendor.dto.MarketPriceResponse;
+
 @Service
 @Transactional(readOnly = true)
 public class HallService {
@@ -259,6 +262,49 @@ public class HallService {
                     }
 
 
+                    Set<Long> selectedRecordIds =
+                            Set.copyOf(price.priceRecordIds());
+
+                    List<HallPriceDetail> hallDetails = recordsByHall
+                            .getOrDefault(hall.getId(), List.of())
+                            .stream()
+                            .filter(record -> selectedRecordIds.contains(record.getId()))
+                            .map(record -> detailsByRecord.get(record.getId()))
+                            .filter(java.util.Objects::nonNull)
+                            .toList();
+
+
+                    Long rentalMinPrice = hallDetails.stream()
+                            .map(HallPriceDetail::getRentalMin)
+                            .filter(java.util.Objects::nonNull)
+                            .map(Number::longValue)
+                            .min(Long::compareTo)
+                            .orElse(null);
+
+                    Long rentalMaxPrice = hallDetails.stream()
+                            .map(HallPriceDetail::getRentalMax)
+                            .filter(java.util.Objects::nonNull)
+                            .map(Number::longValue)
+                            .max(Long::compareTo)
+                            .orElse(null);
+
+                    Long mealMinPrice = hallDetails.stream()
+                            .map(HallPriceDetail::getMealMin)
+                            .filter(java.util.Objects::nonNull)
+                            .map(Number::longValue)
+                            .min(Long::compareTo)
+                            .orElse(null);
+
+                    Long mealMaxPrice = hallDetails.stream()
+                            .map(HallPriceDetail::getMealMax)
+                            .filter(java.util.Objects::nonNull)
+                            .map(Number::longValue)
+                            .max(Long::compareTo)
+                            .orElse(null);
+
+
+
+
                     return new HallSummaryResponse(
                             hall.getId(),
                             vendor.getId(),
@@ -269,13 +315,27 @@ public class HallService {
                             vendor.getOfficialUrl(),
                             capacityMinByHall.get(hall.getId()),
                             capacityMaxByHall.get(hall.getId()),
+
+                            rentalMinPrice,
+                            rentalMaxPrice,
+                            mealMinPrice,
+                            mealMaxPrice,
+
+                            hallMoodsById.getOrDefault(hall.getId(), Set.of())
+                                    .stream()
+                                    .sorted()
+                                    .toList(),
+                            vendor.getParkingStatusRaw(),
+                            vendor.getMealTypeRaw(),
+
                             price.minPrice().longValueExact(),
                             price.maxPrice().longValueExact(),
+
                             "AVAILABLE",
+                            List.of(),
                             recommendationScores.get(hall.getId())
-
-
                     );
+
 
                 })
                 .sorted(Comparator.comparing(
@@ -318,8 +378,24 @@ public class HallService {
                             capacityMaxByHall.get(hall.getId()),
                             null,
                             null,
+                            null,
+                            null,
+                            hallMoodsById.getOrDefault(hall.getId(), Set.of())
+                                    .stream()
+                                    .sorted()
+                                    .toList(),
+                            vendor.getParkingStatusRaw(),
+                            vendor.getMealTypeRaw(),
+                            null,
+                            null,
                             "INSUFFICIENT",
+                            calculateInsufficientReasons(
+                                    recordsByHall.getOrDefault(hall.getId(), List.of()),
+                                    detailsByRecord,
+                                    maxGuests
+                            ),
                             null
+
 
                     );
                 })
@@ -553,6 +629,7 @@ public class HallService {
                         ))
                         .toList();
 
+
         return new HallDetailResponse(
                 hall.getId(),
                 vendor.getId(),
@@ -561,6 +638,11 @@ public class HallService {
                 vendor.getSigunguRaw(),
                 vendor.getAddress(),
                 vendor.getOfficialUrl(),
+                vendor.getPhone(),
+                vendor.getOperatingStatusRaw(),
+                vendor.getMealTypeRaw(),
+                vendor.getParkingStatusRaw(),
+                vendor.getNotes(),
                 capacityMin,
                 capacityMax,
                 hallPrice == null ? null : hallPrice.minPrice().longValueExact(),
@@ -569,6 +651,215 @@ public class HallService {
                 moodTags,
                 priceSources
         );
+
     }
+
+    public HallCompareResponse compareHalls(
+            List<Long> hallIds,
+            int minGuests,
+            int maxGuests,
+            LocalDate weddingDate
+    ) {
+        // 1. 선택 개수 검증
+        if (hallIds == null || hallIds.isEmpty() || hallIds.size() > 3) {
+            throw new IllegalArgumentException(
+                    "You must select between 1 and 3 halls"
+            );
+        }
+
+        // 2. 중복 선택 검증
+        if (hallIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("Invalid hall ID");
+        }
+
+        if (hallIds.stream().distinct().count() != hallIds.size()) {
+            throw new IllegalArgumentException(
+                    "Duplicate hall IDs are not allowed"
+            );
+        }
+
+        // 3. 하객 수 검증
+        if (minGuests <= 0 || maxGuests < minGuests) {
+            throw new IllegalArgumentException("Invalid guest range");
+        }
+
+        // 4. 기존 상세 조회 API 재사용
+        List<HallDetailResponse> halls = hallIds.stream()
+                .map(id -> getHallDetail(
+                        id,
+                        minGuests,
+                        maxGuests,
+                        weddingDate
+                ))
+                .toList();
+
+        // 5. 비교 결과 반환
+        return new HallCompareResponse(
+                halls.size(),
+                3,
+                halls
+        );
+    }
+
+    private List<String> calculateInsufficientReasons(
+            List<PriceRecord> records,
+            Map<Long, HallPriceDetail> detailsByRecord,
+            int maxGuests
+    ) {
+        if (records == null || records.isEmpty()) {
+            return List.of("CAPACITY_MISSING", "PRICE_INFORMATION_MISSING");
+        }
+
+        List<HallPriceDetail> details = records.stream()
+                .map(record -> detailsByRecord.get(record.getId()))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        if (details.isEmpty()) {
+            return List.of("CAPACITY_MISSING", "PRICE_INFORMATION_MISSING");
+        }
+
+        // 하객 수 조건에 맞는 기록이 있는지 확인
+        boolean capacityKnown = details.stream()
+                .anyMatch(d -> d.getCapacityMax() != null);
+
+        if (!capacityKnown) {
+            return List.of("CAPACITY_MISSING");
+        }
+
+        // 수용 인원이 확인된 기록 중 조건에 맞는 기록만 검사
+        List<PriceRecord> eligibleRecords = records.stream()
+                .filter(record -> {
+                    HallPriceDetail d = detailsByRecord.get(record.getId());
+                    return d != null
+                            && d.getCapacityMax() != null
+                            && d.getCapacityMax() >= maxGuests;
+                })
+                .toList();
+
+        if (eligibleRecords.isEmpty()) {
+            return List.of("CAPACITY_INSUFFICIENT");
+        }
+
+        // 누락 항목 판별
+        boolean guaranteeMissing = eligibleRecords.stream()
+                .allMatch(r -> detailsByRecord.get(r.getId())
+                        .getGuaranteedGuests() == null);
+
+        boolean rentalMissing = eligibleRecords.stream()
+                .allMatch(r -> {
+                    HallPriceDetail d = detailsByRecord.get(r.getId());
+                    return d.getRentalMin() == null || d.getRentalMax() == null;
+                });
+
+        boolean mealMissing = eligibleRecords.stream()
+                .allMatch(r -> {
+                    HallPriceDetail d = detailsByRecord.get(r.getId());
+                    return d.getMealMin() == null || d.getMealMax() == null;
+                });
+
+        boolean vatUnknown = eligibleRecords.stream()
+                .allMatch(r -> r.getVatStatus() == null
+                        || !Set.of("INCLUDED", "EXCLUDED")
+                        .contains(r.getVatStatus()));
+
+        List<String> reasons = new java.util.ArrayList<>();
+
+        if (guaranteeMissing) reasons.add("GUARANTEE_MISSING");
+        if (rentalMissing) reasons.add("RENTAL_PRICE_MISSING");
+        if (mealMissing) reasons.add("MEAL_PRICE_MISSING");
+        if (vatUnknown) reasons.add("VAT_UNKNOWN");
+
+        if (reasons.isEmpty()) {
+            reasons.add("PRICE_INFORMATION_INCOMPLETE");
+        }
+
+        return reasons;
+    }
+
+    public MarketPriceResponse getMarketPrice(
+            String regionCode,
+            int minGuests,
+            int maxGuests,
+            LocalDate weddingDate
+    ) {
+        if (minGuests <= 0 || maxGuests < minGuests) {
+            throw new IllegalArgumentException("Invalid guest range");
+        }
+
+        // 기존 예식장 예상 비용 계산 로직 재사용
+        var prices = recommendationService.findHallPrices(
+                regionCode,
+                minGuests,
+                maxGuests,
+                weddingDate
+        );
+
+        // 각 예식장의 예상 비용 범위 중간값
+        List<Long> representativePrices = prices.stream()
+                .map(price -> price.minPrice()
+                        .add(price.maxPrice())
+                        .divide(
+                                java.math.BigDecimal.valueOf(2),
+                                0,
+                                java.math.RoundingMode.HALF_UP
+                        )
+                        .longValueExact())
+                .sorted()
+                .toList();
+
+        int count = representativePrices.size();
+
+        // 해당 조건의 데이터가 없는 경우
+        if (count == 0) {
+            return new MarketPriceResponse(
+                    regionCode,
+                    minGuests,
+                    maxGuests,
+                    0,
+                    null,
+                    null,
+                    null
+            );
+        }
+
+        return new MarketPriceResponse(
+                regionCode,
+                minGuests,
+                maxGuests,
+                count,
+                calculatePercentile(representativePrices, 0.25),
+                calculatePercentile(representativePrices, 0.50),
+                calculatePercentile(representativePrices, 0.75)
+        );
+    }
+
+    // 정렬된 가격 목록의 백분위수 계산 (선형 보간)
+    private Long calculatePercentile(
+            List<Long> sortedPrices,
+            double percentile
+    ) {
+        int n = sortedPrices.size();
+
+        if (n == 1) {
+            return sortedPrices.get(0);
+        }
+
+        double position = (n - 1) * percentile;
+
+        int lowerIndex = (int) Math.floor(position);
+        int upperIndex = (int) Math.ceil(position);
+
+        double fraction = position - lowerIndex;
+
+        double result =
+                sortedPrices.get(lowerIndex) * (1 - fraction)
+                        + sortedPrices.get(upperIndex) * fraction;
+
+        return Math.round(result);
+    }
+
+
+
 
 }

@@ -120,6 +120,17 @@ class AuthSecurityTest {
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/halls/1"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/halls/compare"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/halls/market-price"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 비회원_예식장_예상_비용_계산은_로그인_없이_통과한다() throws Exception {
+        // 이 테스트에는 EstimateController가 없어 404가 나면 보안 필터는 통과한 것
+        mockMvc.perform(post("/api/v1/estimates/hall"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
