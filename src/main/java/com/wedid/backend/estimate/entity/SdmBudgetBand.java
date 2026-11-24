@@ -68,4 +68,16 @@ public class SdmBudgetBand {
     public BigDecimal getUpperAmount() {
         return upperAmount;
     }
+
+    public boolean isLowerInclusive() {
+        return lowerInclusive;
+    }
+
+    public boolean isUpperInclusive() {
+        return upperInclusive;
+    }
+
+    public Short getSortOrder() {
+        return sortOrder;
+    }
 }

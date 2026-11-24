@@ -13,6 +13,8 @@ import com.wedid.backend.roadmap.dto.RoadmapResponse;
 import com.wedid.backend.roadmap.dto.TodoResponse;
 import com.wedid.backend.roadmap.dto.TodoUpdateRequest;
 import com.wedid.backend.roadmap.service.RoadmapService;
+import com.wedid.backend.sdm.repository.SdmBasePriceRepository;
+import com.wedid.backend.sdm.service.SdmEstimateCalculator;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,8 +52,9 @@ import static org.mockito.Mockito.when;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({RoadmapService.class, PlanService.class, PlanPolicyResolver.class, PlanEstimateRecorder.class,
+        SdmEstimateCalculator.class, SdmBasePriceRepository.class,
         RoadmapQueryIntegrationTest.TestConfig.class})
-@Sql({"/sql/plan-fixture.sql", "/sql/roadmap-fixture.sql"})
+@Sql({"/sql/draft-policy-only.sql", "/sql/plan-fixture.sql", "/sql/roadmap-fixture.sql"})
 class RoadmapQueryIntegrationTest {
 
     static final UUID GROOM = UUID.fromString("00000000-0000-0000-0000-0000000000a1");

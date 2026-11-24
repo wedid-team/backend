@@ -11,6 +11,8 @@ import com.wedid.backend.estimate.service.EstimateService;
 import com.wedid.backend.plan.dto.PlanRequest;
 import com.wedid.backend.plan.entity.PlanConditions;
 import com.wedid.backend.plan.entity.PlanSchedule;
+import com.wedid.backend.sdm.service.SdmEstimateCalculator;
+import com.wedid.backend.sdm.service.SdmEstimateCalculator.SdmEstimate;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -23,18 +25,25 @@ import java.util.UUID;
 /**
  * 계획 조건으로 예상 비용을 계산해 고정 기록(estimate_runs)을 만든다.
  *
- * <p>스드메 예상 비용은 예산대 경계(Q-05)와 스드메 계산이 확정되기 전까지 null(미정)로 저장한다.
- * 그래서 예식장을 계산했으면 PARTIAL, 예식장도 계산할 수 없으면 UNAVAILABLE이다.
+ * <p>스드메 예상 비용은 고른 예산대 안 조합 합계의 하위 25% ~ 75% 지점이다(SdmEstimateCalculator).
+ * 스드메 가격 데이터가 없으면 예산대 경계값으로 대신하고(sourceType으로 구분), 경계가 미정이면 null이다.
+ * 스드메가 미정이면 예식장을 계산했어도 PARTIAL, 예식장도 계산할 수 없으면 UNAVAILABLE이다.
  * 합계는 어느 한쪽이라도 없으면 정상 총액으로 보이지 않도록 null로 둔다(db.md 7.2).
  */
 @Component
 public class PlanEstimateRecorder {
 
     private final EstimateService estimateService;
+    private final SdmEstimateCalculator sdmEstimateCalculator;
     private final JsonMapper jsonMapper;
 
-    public PlanEstimateRecorder(EstimateService estimateService, JsonMapper jsonMapper) {
+    public PlanEstimateRecorder(
+            EstimateService estimateService,
+            SdmEstimateCalculator sdmEstimateCalculator,
+            JsonMapper jsonMapper
+    ) {
         this.estimateService = estimateService;
+        this.sdmEstimateCalculator = sdmEstimateCalculator;
         this.jsonMapper = jsonMapper;
     }
 
@@ -63,7 +72,8 @@ public class PlanEstimateRecorder {
         Optional<HallCostEstimate> hall = estimateService.calculateHallCostEstimate(hallRequest);
 
         Range venue = hall.map(h -> new Range(h.minPrice(), h.maxPrice())).orElse(Range.UNKNOWN);
-        Range sdm = Range.UNKNOWN;
+        SdmEstimate sdmEstimate = sdmEstimateCalculator.estimate(policy, band);
+        Range sdm = sdmEstimate.isKnown() ? new Range(sdmEstimate.min(), sdmEstimate.max()) : Range.UNKNOWN;
         Range total = venue.isKnown() && sdm.isKnown()
                 ? new Range(venue.min().add(sdm.min()), venue.max().add(sdm.max()))
                 : Range.UNKNOWN;
@@ -79,7 +89,7 @@ public class PlanEstimateRecorder {
                 band.getId(),
                 conditions.regionId(),
                 toJson(inputSnapshot(request, conditions, band)),
-                toJson(resultSnapshot(hall, sdm, total, band)),
+                toJson(resultSnapshot(hall, sdmEstimate, total, band)),
                 toJson(sourceSnapshot(hall, policy)),
                 venue,
                 sdm,
@@ -110,7 +120,7 @@ public class PlanEstimateRecorder {
     }
 
     private Map<String, Object> resultSnapshot(
-            Optional<HallCostEstimate> hall, Range sdm, Range total, SdmBudgetBand band
+            Optional<HallCostEstimate> hall, SdmEstimate sdm, Range total, SdmBudgetBand band
     ) {
         Map<String, Object> venue = new LinkedHashMap<>();
         hall.ifPresentOrElse(h -> {
@@ -128,8 +138,11 @@ public class PlanEstimateRecorder {
         sdmResult.put("status", sdm.isKnown() ? "CALCULATED" : "UNDECIDED");
         sdmResult.put("bandCode", band.getCode());
         sdmResult.put("bandLabel", band.getLabel());
-        sdmResult.put("min", sdm.min());
-        sdmResult.put("max", sdm.max());
+        sdmResult.put("min", sdm.isKnown() ? sdm.min() : null);
+        sdmResult.put("max", sdm.isKnown() ? sdm.max() : null);
+        sdmResult.put("sourceType", sdm.sourceType() == null ? null : sdm.sourceType().name());
+        sdmResult.put("pendingReason", sdm.pendingReason() == null ? null : sdm.pendingReason().name());
+        sdmResult.put("combinationCountInTier", sdm.combinationCountInTier());
 
         Map<String, Object> totalResult = new LinkedHashMap<>();
         totalResult.put("min", total.min());

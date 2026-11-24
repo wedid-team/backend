@@ -1,6 +1,9 @@
 -- 예산대 경계가 확정된 뒤의 동작을 확인하기 위한 테스트 전용 ACTIVE 정책.
 -- 250 · 350 · 450만 원은 Q-05의 예시값이며 마이그레이션에는 넣지 않는다.
 
+-- ACTIVE는 하나만 둘 수 있어(부분 UNIQUE) 로컬 DB의 ACTIVE 정책(sql/035)은 이 트랜잭션 안에서만 물러난다.
+UPDATE public.calculation_policies SET status = 'RETIRED' WHERE status = 'ACTIVE';
+
 INSERT INTO public.calculation_policies (version, status, settings)
 VALUES ('plan-test-active', 'ACTIVE', '{"defaultSdmBandCode": "STANDARD"}');
 

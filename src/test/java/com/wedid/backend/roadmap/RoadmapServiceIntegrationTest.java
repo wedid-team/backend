@@ -17,6 +17,8 @@ import com.wedid.backend.roadmap.dto.TodoResponse;
 import com.wedid.backend.roadmap.dto.TodoUpdateRequest;
 import com.wedid.backend.roadmap.service.RoadmapItemNotFoundException;
 import com.wedid.backend.roadmap.service.RoadmapService;
+import com.wedid.backend.sdm.repository.SdmBasePriceRepository;
+import com.wedid.backend.sdm.service.SdmEstimateCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,8 +57,9 @@ import static org.mockito.Mockito.when;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({RoadmapService.class, PlanService.class, PlanPolicyResolver.class, PlanEstimateRecorder.class,
+        SdmEstimateCalculator.class, SdmBasePriceRepository.class,
         RoadmapServiceIntegrationTest.TestConfig.class})
-@Sql("/sql/plan-fixture.sql")
+@Sql({"/sql/draft-policy-only.sql", "/sql/plan-fixture.sql"})
 class RoadmapServiceIntegrationTest {
 
     static final UUID GROOM = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
