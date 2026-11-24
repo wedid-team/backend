@@ -28,6 +28,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -141,9 +142,14 @@ public class RoadmapService {
                             step.isCompleted(), step.getActualAmount(), step.getEstimatedMin(), step.getEstimatedMax());
                 })
                 .toList();
-        boolean allStepsCompleted = !steps.isEmpty() && steps.stream().allMatch(PlanStep::isCompleted);
+        // 템플릿마다 계획 단계가 하나씩 있어야 한다. 빠진 단계가 있으면 완료로 보지 않는다
+        Set<Short> planTemplateIds = steps.stream().map(PlanStep::getStepTemplateId).collect(Collectors.toSet());
+        boolean amountStepsMissing = templateById.values().stream()
+                .anyMatch(template -> template.hasCost() && !planTemplateIds.contains(template.getId()));
+        boolean allStepsCompleted = planTemplateIds.containsAll(templateById.keySet())
+                && steps.stream().allMatch(PlanStep::isCompleted);
 
-        return BudgetStatusCalculator.calculate(plan.getBudgetAmount(), amountSteps, allStepsCompleted);
+        return BudgetStatusCalculator.calculate(plan.getBudgetAmount(), amountSteps, amountStepsMissing, allStepsCompleted);
     }
 
     private void assign(PlanTodo todo, String assignee, UUID userId, List<PlanMember> members, OffsetDateTime now) {

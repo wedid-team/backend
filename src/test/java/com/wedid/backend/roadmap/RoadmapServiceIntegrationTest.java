@@ -372,6 +372,32 @@ class RoadmapServiceIntegrationTest {
     }
 
     @Test
+    void 계획에_스드메_단계가_빠졌으면_나머지를_모두_완료해도_완료로_보지_않는다() {
+        UUID venue = stepOf("VENUE_CONTRACT");
+        UUID sdm = stepOf("SDM_CONTRACT");
+        roadmapService.recordContractAmount(GROOM, venue, 25_000_000L);
+        for (String code : List.of("BUDGET_AGREEMENT", "VENUE_CONTRACT", "SHOOTING_TRAVEL", "INVITATIONS_GUESTS", "FINAL_CHECK")) {
+            roadmapService.updateStepCompletion(GROOM, stepOf(code), true);
+        }
+        flushAndClear();
+        // 단계 데이터가 빠진 경우를 만든다
+        jdbc.update("delete from plan_todos where plan_step_id = ?", sdm);
+        jdbc.update("delete from plan_steps where id = ?", sdm);
+
+        BudgetStatusResponse status = roadmapService.getBudgetStatus(GROOM);
+
+        assertThat(status.amountSteps()).extracting(BudgetStatusResponse.AmountStepStatus::code)
+                .containsExactly("VENUE_CONTRACT");
+        assertThat(status.amountStepsCompleted()).isFalse();
+        assertThat(status.allStepsCompleted()).isFalse();
+        assertThat(status.spentAmount()).isEqualByComparingTo("25000000");
+        assertThat(status.remainingBudget()).isEqualByComparingTo("5000000");
+        assertThat(status.remainingEstimate()).isNull();
+        assertThat(status.verdict()).isNull();
+        assertThat(status.verdictSkipReason()).isEqualTo(SkipReason.AMOUNT_STEPS_MISSING);
+    }
+
+    @Test
     void 예산이_없으면_지금까지_쓴_금액만_준다() {
         planService.overwriteMine(GROOM, request(null));
         UUID venue = stepOf("VENUE_CONTRACT");

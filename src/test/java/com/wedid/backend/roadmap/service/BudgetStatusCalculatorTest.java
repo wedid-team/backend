@@ -133,6 +133,41 @@ class BudgetStatusCalculatorTest {
         assertThat(status.verdictSkipReason()).isEqualTo(SkipReason.AMOUNT_STEPS_COMPLETED);
     }
 
+    @Test
+    void 금액_단계가_하나도_없으면_완료로_보지_않고_판정하지_않는다() {
+        BudgetStatusResponse status = BudgetStatusCalculator.calculate(BUDGET, List.of(), false);
+
+        assertThat(status.amountStepsCompleted()).isFalse();
+        assertThat(status.spentAmount()).isEqualByComparingTo("0");
+        assertThat(status.remainingBudget()).isEqualByComparingTo("30000000");
+        assertThat(status.remainingEstimate()).isNull();
+        assertThat(status.verdict()).isNull();
+        assertThat(status.verdictSkipReason()).isEqualTo(SkipReason.AMOUNT_STEPS_MISSING);
+        assertThat(status.amountSteps()).isEmpty();
+    }
+
+    @Test
+    void 금액_단계가_일부_빠졌으면_있는_단계를_모두_완료해도_완료로_보지_않는다() {
+        BudgetStatusResponse status = BudgetStatusCalculator.calculate(BUDGET, List.of(
+                completed(22_000_000)
+        ), true, false);
+
+        assertThat(status.amountStepsCompleted()).isFalse();
+        assertThat(status.spentAmount()).isEqualByComparingTo("22000000");
+        assertThat(status.remainingBudget()).isEqualByComparingTo("8000000");
+        assertThat(status.remainingEstimate()).isNull();
+        assertThat(status.verdict()).isNull();
+        assertThat(status.verdictSkipReason()).isEqualTo(SkipReason.AMOUNT_STEPS_MISSING);
+    }
+
+    @Test
+    void 금액_단계가_빠졌어도_예산이_없으면_예산_미입력이_먼저다() {
+        BudgetStatusResponse status = BudgetStatusCalculator.calculate(null, List.of(), false);
+
+        assertThat(status.amountStepsCompleted()).isFalse();
+        assertThat(status.verdictSkipReason()).isEqualTo(SkipReason.NO_BUDGET);
+    }
+
     private static AmountStep completed(long actual) {
         return step(true, won(actual), won(1), won(2));
     }

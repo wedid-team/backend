@@ -43,17 +43,31 @@ public final class BudgetStatusCalculator {
     private BudgetStatusCalculator() {
     }
 
-    /**
-     * @param budget           예산(원). 입력하지 않았으면 null
-     * @param amountSteps      금액 단계 목록
-     * @param allStepsCompleted 6단계를 모두 완료했는지 (R-09 "모든 준비를 마쳤어요")
-     */
+    /** 계획에 금액 단계가 모두 있을 때. 목록이 비어 있으면 빠진 것으로 본다. */
     public static BudgetStatusResponse calculate(BigDecimal budget, List<AmountStep> amountSteps, boolean allStepsCompleted) {
+        return calculate(budget, amountSteps, false, allStepsCompleted);
+    }
+
+    /**
+     * @param budget             예산(원). 입력하지 않았으면 null
+     * @param amountSteps        금액 단계 목록
+     * @param amountStepsMissing 계획에 있어야 할 금액 단계(예식장 · 스드메) 중 빠진 것이 있는지.
+     *                           목록이 비어 있어도 빠진 것으로 본다. 빠졌으면 완료로 보지 않고 판정도 하지 않는다
+     * @param allStepsCompleted  6단계를 모두 완료했는지 (R-09 "모든 준비를 마쳤어요")
+     */
+    public static BudgetStatusResponse calculate(
+            BigDecimal budget,
+            List<AmountStep> amountSteps,
+            boolean amountStepsMissing,
+            boolean allStepsCompleted
+    ) {
+        boolean missing = amountStepsMissing || amountSteps.isEmpty();
         BigDecimal spent = BigDecimal.ZERO;
         BigDecimal remainingMin = BigDecimal.ZERO;
         BigDecimal remainingMax = BigDecimal.ZERO;
-        boolean estimateKnown = true;
-        boolean amountStepsCompleted = true;
+        // 빠진 단계의 예상 비용은 알 수 없으니 합도 미정이다
+        boolean estimateKnown = !missing;
+        boolean amountStepsCompleted = !missing;
 
         for (AmountStep step : amountSteps) {
             if (step.completed()) {
@@ -89,7 +103,9 @@ public final class BudgetStatusCalculator {
 
         Verdict verdict = null;
         SkipReason skipReason;
-        if (amountStepsCompleted) {
+        if (missing) {
+            skipReason = SkipReason.AMOUNT_STEPS_MISSING;
+        } else if (amountStepsCompleted) {
             skipReason = SkipReason.AMOUNT_STEPS_COMPLETED;
         } else if (remainingEstimate == null) {
             skipReason = SkipReason.ESTIMATE_PENDING;

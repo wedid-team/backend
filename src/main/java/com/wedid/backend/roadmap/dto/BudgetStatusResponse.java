@@ -12,10 +12,10 @@ import java.util.UUID;
  * @param remainingBudget      예산 − 지금까지 쓴 금액. 음수면 예산 초과. 예산이 없으면 null
  * @param overBudgetAmount     예산을 넘은 금액 (넘지 않았으면 0). "예산을 ○○만 원 넘었어요" (R-09). 예산이 없으면 null
  * @param remainingEstimate    완료하지 않은 금액 단계의 예상 비용 합. 금액 단계를 모두 완료했으면 0~0,
- *                             미완료 단계 중 예상 비용이 미정인 단계가 있으면 null
+ *                             미완료 단계 중 예상 비용이 미정인 단계가 있거나 금액 단계가 빠졌으면 null
  * @param verdict              여유 / 빠듯 / 부족. 판정하지 않으면 null이고 이유는 verdictSkipReason
  * @param verdictSkipReason    판정하지 않은 이유. 판정했으면 null
- * @param amountStepsCompleted 예식장 · 스드메 단계를 모두 완료했는지. true면 판정 대신
+ * @param amountStepsCompleted 예식장 · 스드메 단계가 모두 있고 모두 완료했는지. true면 판정 대신
  *                             "예식장 · 스드메 계약을 모두 마쳤어요 · 남은 예산 ○○만 원" (R-10)
  * @param allStepsCompleted    6단계를 모두 완료했는지. true면 "모든 준비를 마쳤어요" (R-09)
  * @param amountSteps          금액 단계(예식장 · 스드메)별 예상 비용 · 실제 금액. 합계가 미정이어도 단계별 값은 볼 수 있다
@@ -48,6 +48,8 @@ public record BudgetStatusResponse(
         NO_BUDGET,
         /** 예식장 · 스드메를 모두 완료: 판정 대신 완료 안내 + 남은 예산 (R-10) */
         AMOUNT_STEPS_COMPLETED,
+        /** 계획에 예식장 · 스드메 단계가 없거나 일부 빠짐 (단계 데이터 누락). 완료로 보지 않고 판정하지 않는다 */
+        AMOUNT_STEPS_MISSING,
         /** 완료하지 않은 금액 단계의 예상 비용이 미정 (예: 스드메 예산대 경계 미확정, Q-05) */
         ESTIMATE_PENDING
     }
