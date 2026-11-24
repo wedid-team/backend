@@ -97,8 +97,7 @@ public class PlanStep extends AssignedIdEntity {
         if (!isCompleted()) {
             applyEstimate(template, estimate);
         }
-        this.updatedBy = userId;
-        this.updatedAt = now;
+        touch(userId, now);
     }
 
     private void reschedule(RoadmapStepTemplate template, LocalDate weddingDate) {
@@ -118,6 +117,56 @@ public class PlanStep extends AssignedIdEntity {
         this.estimatedMin = range.min();
         this.estimatedMax = range.max();
         this.estimateRunId = estimate.getId();
+    }
+
+    /**
+     * 실제 계약 금액을 입력하거나 고친다. 완료한 단계도 고칠 수 있다(R-04).
+     * 예상 비용과 완료 상태는 그대로 둔다(db.md 5.3).
+     */
+    public void recordActualAmount(RoadmapStepTemplate template, BigDecimal amount, UUID userId, OffsetDateTime now) {
+        if (!template.hasCost()) {
+            throw new IllegalArgumentException("실제 계약 금액은 예식장 · 스드메 단계에만 입력할 수 있어요.");
+        }
+        this.actualAmount = amount;
+        touch(userId, now);
+    }
+
+    /**
+     * 단계를 완료한다. 금액 단계(예식장 · 스드메)는 실제 계약 금액이 있어야 한다(R-09).
+     * 할 일을 모두 체크하지 않아도 완료할 수 있고, 완료 순서도 제한하지 않는다(R-02).
+     * 이미 완료한 단계면 처음 완료한 기록을 그대로 둔다.
+     */
+    public void complete(RoadmapStepTemplate template, UUID userId, OffsetDateTime now) {
+        if (isCompleted()) {
+            return;
+        }
+        if (template.hasCost() && actualAmount == null) {
+            throw new IllegalArgumentException("실제 계약 금액을 입력해야 단계를 완료할 수 있어요.");
+        }
+        this.completedAt = now;
+        this.completedBy = userId;
+        touch(userId, now);
+    }
+
+    /**
+     * 완료를 취소한다. 실제 계약 금액은 지우지 않는다.
+     * 다시 미완료 단계가 되므로 예상 비용은 계획의 현재 계산 결과로 바로 맞춘다(새로 계산하지는 않는다).
+     */
+    public void reopen(RoadmapStepTemplate template, EstimateRun currentEstimate, UUID userId, OffsetDateTime now) {
+        if (!isCompleted()) {
+            return;
+        }
+        this.completedAt = null;
+        this.completedBy = null;
+        if (currentEstimate != null) {
+            applyEstimate(template, currentEstimate);
+        }
+        touch(userId, now);
+    }
+
+    private void touch(UUID userId, OffsetDateTime now) {
+        this.updatedBy = userId;
+        this.updatedAt = now;
     }
 
     public boolean isCompleted() {
@@ -162,5 +211,17 @@ public class PlanStep extends AssignedIdEntity {
 
     public OffsetDateTime getCompletedAt() {
         return completedAt;
+    }
+
+    public UUID getCompletedBy() {
+        return completedBy;
+    }
+
+    public UUID getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
     }
 }
