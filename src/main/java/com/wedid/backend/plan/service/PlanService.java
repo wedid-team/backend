@@ -25,6 +25,7 @@ import com.wedid.backend.roadmap.repository.PlanStepRepository;
 import com.wedid.backend.roadmap.repository.PlanTodoRepository;
 import com.wedid.backend.roadmap.repository.RoadmapStepTemplateRepository;
 import com.wedid.backend.roadmap.repository.TodoTemplateRepository;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +40,9 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -120,7 +123,11 @@ public class PlanService {
             planRepository.saveAndFlush(plan);
             planMemberRepository.saveAndFlush(PlanMember.owner(plan.getId(), userId));
         } catch (DataIntegrityViolationException e) {
-            throw new PlanAlreadyExistsException();
+            // FK 위반 등 다른 무결성 오류까지 "이미 저장된 계획"으로 숨기지 않는다
+            if (violatesOnePlanPerUser(e)) {
+                throw new PlanAlreadyExistsException();
+            }
+            throw e;
         }
 
         EstimateRun estimate = estimateRunRepository.save(
@@ -181,6 +188,24 @@ public class PlanService {
         }
 
         return toResponse(plan, member.getRole(), band, estimate, steps, templates);
+    }
+
+    /** 부부당 계획 1개(P-01)를 지키는 UNIQUE 제약. sql/022 · sql/023 */
+    static final Set<String> ONE_PLAN_PER_USER_CONSTRAINTS = Set.of(
+            "uq_plans_active_owner",
+            "uq_plan_members_user",
+            "uq_plan_members_plan_user"
+    );
+
+    /** 위반된 제약 조건 이름이 1인 1계획 UNIQUE 제약 중 하나인지. 이름을 알 수 없으면 false. */
+    static boolean violatesOnePlanPerUser(DataIntegrityViolationException e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation) {
+                String name = violation.getConstraintName();
+                return name != null && ONE_PLAN_PER_USER_CONSTRAINTS.contains(name.toLowerCase(Locale.ROOT));
+            }
+        }
+        return false;
     }
 
     private PlanConditions toConditions(PlanRequest request, SdmBudgetBand band, PlanSchedule previous) {

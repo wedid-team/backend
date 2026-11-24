@@ -24,6 +24,7 @@ import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.jdbc.Sql;
@@ -187,6 +188,16 @@ class PlanServiceIntegrationTest {
                 "PLAN_TEST_REGION", "FROM_150_TO_200", WeddingDateType.MONTH,
                 null, 2026, 10, null, List.of(), null)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 계획_중복이_아닌_무결성_오류는_409로_숨기지_않는다() {
+        // 토큰은 유효하지만 회원 행이 없는 경우 → fk_plans_owner 위반
+        UUID deletedUser = UUID.fromString("00000000-0000-0000-0000-0000000000ff");
+
+        assertThatThrownBy(() -> planService.create(deletedUser, request(WeddingDateType.UNDECIDED, null, null)))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .isNotInstanceOf(PlanAlreadyExistsException.class);
     }
 
     @Test
