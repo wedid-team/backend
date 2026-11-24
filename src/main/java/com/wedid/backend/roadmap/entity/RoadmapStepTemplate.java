@@ -6,6 +6,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 
@@ -41,6 +43,16 @@ public class RoadmapStepTemplate {
     @Column(name = "cost_kind", nullable = false)
     private CostKind costKind;
 
+    /** 단계 상세 "정해야 할 것". 문자열 JSON 배열. 콘텐츠 미정이라 지금은 [] (sql/034) */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "decision_items", nullable = false)
+    private String decisionItems;
+
+    /** 단계 상세 "알아두면 좋은 점". 문자열 JSON 배열. 콘텐츠 미정이라 지금은 [] (sql/034) */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "guidance_items", nullable = false)
+    private String guidanceItems;
+
     protected RoadmapStepTemplate() {
     }
 
@@ -70,6 +82,22 @@ public class RoadmapStepTemplate {
 
     public CostKind getCostKind() {
         return costKind;
+    }
+
+    public Integer getDaysBeforeStart() {
+        return daysBeforeStart;
+    }
+
+    public Integer getDaysBeforeEnd() {
+        return daysBeforeEnd;
+    }
+
+    public String getDecisionItems() {
+        return decisionItems;
+    }
+
+    public String getGuidanceItems() {
+        return guidanceItems;
     }
 
     /** 예상 비용과 실제 계약 금액을 가지는 금액 단계(예식장 · 스드메)인지. */

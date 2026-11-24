@@ -39,4 +39,8 @@ public class TodoTemplate {
     public String getTitle() {
         return title;
     }
+
+    public Integer getSortOrder() {
+        return sortOrder;
+    }
 }

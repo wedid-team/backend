@@ -47,4 +47,8 @@ public class OAuthAccount {
     public UUID getUserId() {
         return userId;
     }
+
+    public OAuthProvider getProvider() {
+        return provider;
+    }
 }

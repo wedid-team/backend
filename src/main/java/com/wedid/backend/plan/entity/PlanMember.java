@@ -64,4 +64,8 @@ public class PlanMember {
     public Role getRole() {
         return role;
     }
+
+    public OffsetDateTime getJoinedAt() {
+        return joinedAt;
+    }
 }
