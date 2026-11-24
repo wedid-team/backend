@@ -53,7 +53,8 @@ public class PlanPolicyResolver {
                         "정책 " + policy.getVersion() + "에 스드메 예산대 " + code + "가 없습니다."));
     }
 
-    private String defaultBandCode(CalculationPolicy policy) {
+    /** 정책의 기본 스드메 예산대 코드 (E-10, 설정이 없으면 STANDARD) */
+    public String defaultBandCode(CalculationPolicy policy) {
         JsonNode node = jsonMapper.readTree(policy.getSettings()).path("defaultSdmBandCode");
         return node.isString() ? node.asString() : FALLBACK_DEFAULT_BAND_CODE;
     }

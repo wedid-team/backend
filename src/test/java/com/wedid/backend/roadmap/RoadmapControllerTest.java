@@ -12,6 +12,7 @@ import com.wedid.backend.global.security.SecurityConfig;
 import com.wedid.backend.plan.service.PlanNotFoundException;
 import com.wedid.backend.roadmap.controller.RoadmapController;
 import com.wedid.backend.roadmap.dto.BudgetStatusResponse;
+import com.wedid.backend.roadmap.dto.RoadmapResponse;
 import com.wedid.backend.roadmap.dto.RoadmapStepResponse;
 import com.wedid.backend.roadmap.dto.TodoResponse;
 import com.wedid.backend.roadmap.dto.TodoUpdateRequest;
@@ -95,7 +96,39 @@ class RoadmapControllerTest {
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/plans/me/budget-status"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/plans/me/roadmap"))
+                .andExpect(status().isUnauthorized());
         verifyNoInteractions(roadmapService);
+    }
+
+    @Test
+    void 로드맵을_단계별_할_일과_함께_돌려준다() throws Exception {
+        UUID stepId = UUID.randomUUID();
+        TodoResponse todo = new TodoResponse(ID, stepId, "할 일", false, null, "ME", USER_ID, USER_ID, null);
+        RoadmapResponse.Step step = new RoadmapResponse.Step(
+                stepId, "VENUE_CONTRACT", "예식장 계약", null, 2, "VENUE", 300, 240,
+                java.time.LocalDate.of(2026, 12, 13), java.time.LocalDate.of(2027, 2, 11),
+                new RoadmapResponse.Amount(new BigDecimal("20000000"), null),
+                null, false, null, null, false, false, List.of(), List.of(), null,
+                List.of(todo), USER_ID, null);
+        when(roadmapService.getRoadmap(USER_ID)).thenReturn(new RoadmapResponse(
+                UUID.randomUUID(),
+                new RoadmapResponse.Wedding(null, java.time.LocalDate.of(2027, 10, 9), false, 319),
+                stepId, 0, List.of(step),
+                new RoadmapResponse.Member(USER_ID, "신랑", "OWNER", "KAKAO", null),
+                null, null));
+
+        mockMvc.perform(get("/api/v1/plans/me/roadmap").cookie(loggedIn()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.wedding.dDay").value(319))
+                .andExpect(jsonPath("$.nextStepId").value(stepId.toString()))
+                .andExpect(jsonPath("$.steps[0].stepId").value(stepId.toString()))
+                .andExpect(jsonPath("$.steps[0].estimated.min").value(20000000))
+                .andExpect(jsonPath("$.steps[0].decisionItems").isArray())
+                .andExpect(jsonPath("$.steps[0].decisionItems").isEmpty())
+                .andExpect(jsonPath("$.steps[0].todos[0].taskId").value(ID.toString()))
+                .andExpect(jsonPath("$.steps[0].todos[0].assignee").value("ME"))
+                .andExpect(jsonPath("$.me.loginProvider").value("KAKAO"));
     }
 
     @Test

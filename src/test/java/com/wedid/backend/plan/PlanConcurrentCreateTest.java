@@ -8,6 +8,8 @@ import com.wedid.backend.plan.service.PlanAlreadyExistsException;
 import com.wedid.backend.plan.service.PlanEstimateRecorder;
 import com.wedid.backend.plan.service.PlanPolicyResolver;
 import com.wedid.backend.plan.service.PlanService;
+import com.wedid.backend.sdm.repository.SdmBasePriceRepository;
+import com.wedid.backend.sdm.service.SdmEstimateCalculator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,7 @@ import static org.mockito.Mockito.when;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({PlanService.class, PlanPolicyResolver.class, PlanEstimateRecorder.class,
+        SdmEstimateCalculator.class, SdmBasePriceRepository.class,
         PlanServiceIntegrationTest.TestConfig.class})
 class PlanConcurrentCreateTest {
 

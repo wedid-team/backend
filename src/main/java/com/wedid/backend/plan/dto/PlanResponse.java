@@ -66,7 +66,7 @@ public record PlanResponse(
             CalculationStatus calculationStatus,
             OffsetDateTime calculatedAt,
             Venue venue,
-            Amount sdm,
+            Sdm sdm,
             Amount total
     ) {
     }
@@ -84,6 +84,17 @@ public record PlanResponse(
     }
 
     public record Amount(BigDecimal min, BigDecimal max) {
+    }
+
+    /**
+     * 스드메 예상 비용.
+     *
+     * @param sourceType    COMBINATION_DATA(예산대 안 조합 합계의 하위 25~75% 지점) /
+     *                      BAND_BOUNDARY(스드메 가격 데이터가 없어 예산대 경계값으로 대신함). 경계 미정이면 null
+     * @param pendingReason 미정(null)인 이유: TIER_BOUNDARY_PENDING / OPEN_ENDED_TIER(상한 · 하한 없는 구간을 경계값으로 대신할 때) /
+     *                      NO_COMBINATION_IN_TIER. 값이 있으면 null
+     */
+    public record Sdm(BigDecimal min, BigDecimal max, String sourceType, String pendingReason) {
     }
 
     /**
