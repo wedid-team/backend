@@ -14,6 +14,8 @@ import com.wedid.backend.plan.service.PlanEstimateRecorder;
 import com.wedid.backend.plan.service.PlanNotFoundException;
 import com.wedid.backend.plan.service.PlanPolicyResolver;
 import com.wedid.backend.plan.service.PlanService;
+import com.wedid.backend.sdm.repository.SdmBasePriceRepository;
+import com.wedid.backend.sdm.service.SdmEstimateCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -55,8 +57,9 @@ import static org.mockito.Mockito.when;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({PlanService.class, PlanPolicyResolver.class, PlanEstimateRecorder.class,
+        SdmEstimateCalculator.class, SdmBasePriceRepository.class,
         PlanServiceIntegrationTest.TestConfig.class})
-@Sql("/sql/plan-fixture.sql")
+@Sql({"/sql/draft-policy-only.sql", "/sql/plan-fixture.sql"})
 class PlanServiceIntegrationTest {
 
     static final UUID GROOM = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
@@ -127,6 +130,7 @@ class PlanServiceIntegrationTest {
         assertThat(plan.estimate().venue().sourceType()).isEqualTo("HALL_DATA");
         assertThat(plan.estimate().sdm().min()).isNull();
         assertThat(plan.estimate().sdm().max()).isNull();
+        assertThat(plan.estimate().sdm().pendingReason()).isEqualTo("TIER_BOUNDARY_PENDING");
         assertThat(plan.estimate().total().min()).isNull();
         assertThat(plan.estimate().total().max()).isNull();
 
@@ -328,14 +332,19 @@ class PlanServiceIntegrationTest {
 
     @Test
     @Sql({"/sql/plan-fixture.sql", "/sql/plan-active-policy-fixture.sql"})
-    void ACTIVE_정책이_있으면_그_정책의_예산대를_쓰되_스드메_예상_비용은_여전히_미정이다() {
+    void ACTIVE_정책이_있으면_그_정책의_예산대를_쓰고_스드메_데이터가_없으면_예산대_경계값으로_대신한다() {
         PlanResponse plan = planService.create(GROOM, request(WeddingDateType.EXACT, LocalDate.of(2027, 10, 9), null));
 
         assertThat(plan.sdmBand().code()).isEqualTo("STANDARD");
         assertThat(plan.sdmBand().lowerAmount()).isEqualByComparingTo("2500000");
         assertThat(plan.sdmBand().upperAmount()).isEqualByComparingTo("3500000");
-        assertThat(plan.estimate().sdm().min()).isNull();
-        assertThat(plan.estimate().calculationStatus()).isEqualTo(CalculationStatus.PARTIAL);
+        // 로컬 DB에 스드메 가격 데이터가 없어 BAND_BOUNDARY
+        assertThat(plan.estimate().sdm().min()).isEqualByComparingTo("2500000");
+        assertThat(plan.estimate().sdm().max()).isEqualByComparingTo("3500000");
+        assertThat(plan.estimate().sdm().sourceType()).isEqualTo("BAND_BOUNDARY");
+        assertThat(plan.estimate().sdm().pendingReason()).isNull();
+        assertThat(plan.estimate().calculationStatus()).isEqualTo(CalculationStatus.COMPLETE);
+        assertThat(step(plan, "SDM_CONTRACT").estimated().min()).isEqualByComparingTo("2500000");
         flushAndClear();
         assertThat(jdbc.queryForObject(
                 "select p.version from estimate_runs e join calculation_policies p on p.id = e.policy_id where e.id = ?",

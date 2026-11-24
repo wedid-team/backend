@@ -65,7 +65,9 @@ public class SecurityConfig {
                                 "/api/v1/regions",
                                 "/api/v1/guest-ranges",
                                 "/api/v1/moods",
-                                "/api/v1/auth/me"
+                                "/api/v1/auth/me",
+                                // 비회원도 스드메 예산대를 바꿀 수 있다 (C-01). 스드메 조합(후보)은 로그인 필요
+                                "/api/v1/sdm/budget-tiers"
                                 // 예식장 후보 목록·상세(/api/v1/halls/**)는 로그인 필요 (C-01 · C-02 · R-12)
                         ).permitAll()
 

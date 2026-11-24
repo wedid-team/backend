@@ -308,7 +308,9 @@ public class PlanService {
     }
 
     private PlanResponse.Estimate toEstimate(EstimateRun estimate) {
-        JsonNode venue = jsonMapper.readTree(estimate.getResultSnapshot()).path("venue");
+        JsonNode result = jsonMapper.readTree(estimate.getResultSnapshot());
+        JsonNode venue = result.path("venue");
+        JsonNode sdm = result.path("sdm");
         EstimateRun.Range venueRange = estimate.getVenue();
 
         return new PlanResponse.Estimate(
@@ -324,7 +326,13 @@ public class PlanService {
                         textOrNull(venue, "sourceUrl"),
                         venue.path("sampleCount").isNumber() ? venue.path("sampleCount").asInt() : null
                 ),
-                amount(estimate.getSdm()),
+                new PlanResponse.Sdm(
+                        estimate.getSdm().min(),
+                        estimate.getSdm().max(),
+                        textOrNull(sdm, "sourceType"),
+                        // 이전 기록에는 이유가 없으므로 금액이 없으면 경계 미정으로 본다
+                        estimate.getSdm().isKnown() ? null
+                                : sdm.has("pendingReason") ? textOrNull(sdm, "pendingReason") : "TIER_BOUNDARY_PENDING"),
                 amount(estimate.getTotal())
         );
     }
