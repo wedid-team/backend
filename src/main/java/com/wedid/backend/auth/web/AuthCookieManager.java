@@ -14,7 +14,8 @@ import java.util.Optional;
 
 /**
  * 인증 토큰 쿠키 생성·삭제·조회.
- * 두 토큰 모두 HttpOnly(스크립트 접근 불가) + SameSite=Lax로 내려 CSRF를 막는다.
+ * 두 토큰 모두 HttpOnly(스크립트 접근 불가) + SameSite=Lax로 내려, 다른 사이트에서 보낸 요청에는 쿠키가 실리지 않게 한다.
+ * (같은 사이트의 서브도메인 요청까지 막지는 않는다. SecurityConfig의 CSRF 설명 참고)
  * 그래서 프론트엔드와 API는 같은 사이트(예: wedid.app / api.wedid.app)에 있어야 한다.
  */
 @Component

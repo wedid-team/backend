@@ -29,6 +29,8 @@ import org.springframework.security.web.savedrequest.NullRequestCache;
  *   (OAuth 진행 중 state 보관에만 세션을 잠깐 쓰고, 로그인이 끝나면 무효화한다)
  * - CSRF: 인증 쿠키가 모두 SameSite=Lax라 다른 사이트에서 보낸 POST·PATCH 등에는 쿠키가 실리지 않는다.
  *   상태를 바꾸는 GET API를 만들지 않는 것을 전제로 CSRF 토큰 검사는 끈다.
+ *   단, 같은 사이트의 다른 서브도메인에서 보낸 요청은 막지 못한다. 같은 도메인 아래에
+ *   신뢰할 수 없는 서브도메인을 두게 되면 CSRF 토큰 또는 Origin 검사를 추가해야 한다.
  */
 @Configuration
 @EnableConfigurationProperties(AuthProperties.class)
