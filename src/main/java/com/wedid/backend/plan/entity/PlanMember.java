@@ -38,18 +38,28 @@ public class PlanMember {
     @Column(nullable = false)
     private Role role;
 
-    @Column(name = "joined_at", nullable = false,
-            insertable = false, updatable = false)
+    // 합류 직후 응답에도 같은 시각을 쓰도록 서버 시계 값을 직접 넣는다
+    @Column(name = "joined_at", nullable = false, updatable = false)
     private OffsetDateTime joinedAt;
 
     protected PlanMember() {
     }
 
-    public static PlanMember owner(UUID planId, UUID userId) {
+    public static PlanMember owner(UUID planId, UUID userId, OffsetDateTime now) {
+        return of(planId, userId, Role.OWNER, now);
+    }
+
+    /** 초대 링크로 합류한 짝꿍. */
+    public static PlanMember partner(UUID planId, UUID userId, OffsetDateTime now) {
+        return of(planId, userId, Role.PARTNER, now);
+    }
+
+    private static PlanMember of(UUID planId, UUID userId, Role role, OffsetDateTime now) {
         PlanMember member = new PlanMember();
         member.planId = planId;
         member.userId = userId;
-        member.role = Role.OWNER;
+        member.role = role;
+        member.joinedAt = now;
         return member;
     }
 
