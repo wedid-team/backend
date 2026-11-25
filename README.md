@@ -37,7 +37,7 @@ WEDID 백엔드
 
 ## API 문서
 서버 실행 후 아래 경로에서 Swagger UI를 확인할 수 있습니다.
-- 배포 서버: (배포 후 주소 기입)/swagger-ui.html
+- 배포 서버: https://api.wedid.site/swagger-ui.html
 - 로컬: http://localhost:8080/swagger-ui.html
 
 ## 배포

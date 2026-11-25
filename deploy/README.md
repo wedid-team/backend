@@ -1,9 +1,11 @@
 # 배포 가이드 (AWS EC2 t4g + Neon PostgreSQL, 시드니)
 
 ```
-사용자 ──HTTPS──▶ EC2 t4g (arm64, ap-southeast-2)
+사용자 ──HTTPS──▶ api.wedid.site = EC2 t4g.small (arm64, ap-southeast-2)
                   [ Nginx(443) ──▶ Spring(app:8080) ] ──SSL──▶ Neon PostgreSQL (aws-ap-southeast-2)
                     Certbot: 인증서 자동 갱신
+
+main에 머지 ──▶ GitHub Actions(.github/workflows/deploy.yml) ──SSH──▶ EC2: git pull → docker compose up -d --build
 ```
 
 | 파일 | 역할 |
@@ -12,111 +14,158 @@
 | `docker-compose.yml` | app + nginx + certbot |
 | `nginx/templates/default.conf.template` | HTTP→HTTPS 리다이렉트, 프록시, X-Forwarded 헤더 |
 | `scripts/init-cert.sh` | Let's Encrypt 인증서 최초 발급 |
-| `scripts/apply-sql.sh` | Neon에 `sql/` 마이그레이션 적용 |
-| `.env.example` | 배포 환경변수 목록 → `deploy/.env`로 복사해서 사용 |
+| `scripts/apply-sql.sh` | Neon에 `sql/` 마이그레이션 적용, 또는 sql 파일 하나 실행 |
+| `.env.example` | 배포 환경변수 목록 → 서버에서 `deploy/.env`로 복사해서 사용 |
+| `../.github/workflows/deploy.yml` | main 머지 시 자동 배포 + 헬스체크 |
+| `../sql/data/sdm_normalization_rebuild.sql` | 스드메 원본 → 정리 테이블 적재 |
 
 > 로컬 개발용 DB는 기존처럼 루트의 `docker-compose.yml`을 씁니다. 이 폴더의 파일은 배포 전용입니다.
 
 ---
 
-## 0. 준비물
+## 0. 도메인
 
-- **도메인**: Let's Encrypt는 IP 주소로는 발급하지 않고, 구글 로그인도 IP 주소 리다이렉트를 허용하지 않아 도메인이 꼭 필요합니다. (도메인은 팀에서 정하는 중. 아래 `<도메인>` 자리에 넣으세요.)
-
-### 도메인 구조 (기본)
-
-| 주소 | 용도 | 가리키는 곳 |
+| 주소 | 용도 | DNS |
 |---|---|---|
-| `https://api.<도메인>` | 백엔드 (이 서버, Swagger 포함) | EC2 탄력적 IP |
-| `https://<도메인>` | 프론트엔드 | 프론트 배포처 |
+| `https://api.wedid.site` | 백엔드 (이 서버, Swagger 포함) | A 레코드 → EC2 탄력적 IP |
+| `https://wedid.site` | 프론트엔드 | 프론트 배포처 안내대로 |
 
-**왜 이렇게 나누나**: 인증 쿠키가 `SameSite=Lax`입니다. 프론트와 백엔드가 **같은 사이트(같은 등록 도메인)** 아래에 있어야 프론트에서 보내는 API 요청에 로그인 쿠키가 실립니다.
-- `api.<도메인>`과 `<도메인>`은 같은 사이트라서 지금 코드 그대로 동작합니다.
-- 프론트를 `*.vercel.app` 같은 다른 도메인에 두면 로그인 상태가 유지되지 않습니다. 쿠키 정책을 따로 바꿔야 합니다.
-- 같은 이유로 `duckdns.org` 같은 공용 서브도메인 서비스(`a.duckdns.org` / `b.duckdns.org`)는 서로 다른 사이트로 취급되니, **직접 등록한 도메인**을 쓰세요.
-- **Neon 프로젝트**: Postgres 16, 리전 **AWS Asia Pacific (Sydney) `aws-ap-southeast-2`**. EC2와 같은 리전이라 요청마다 오가는 DB 지연이 작습니다.
-- **XLSX 원본 9개** (데이터 적재 시): `wedding_venues`, `wedding_hall_prices`, `wedding_options`, `sdm_vendors`, `sdm_prices`, `sdm_penalties`, `sdm_packages`, `sdm_options`, `market_stats` (.xlsx)
+- 인증 쿠키가 `SameSite=Lax`라서, 프론트와 백엔드가 **같은 사이트(wedid.site)** 아래에 있어야 프론트의 API 요청에 로그인 쿠키가 실립니다.
+  `api.wedid.site`와 `wedid.site`는 같은 사이트라서 지금 코드 그대로 동작합니다.
+- 프론트를 `*.vercel.app` 같은 다른 도메인 주소로 직접 쓰면 로그인 상태가 유지되지 않습니다. 프론트도 `wedid.site`로 연결해서 쓰세요.
+- Let's Encrypt와 구글 로그인은 IP 주소를 받지 않아서 도메인이 꼭 필요합니다.
 
 ---
 
-## 1. EC2에서 실행할 순서
+## 1. EC2 최초 설정 (1회)
 
-### 1-1. AWS 콘솔 (직접)
+### 1-1. AWS 콘솔
 1. EC2 인스턴스 생성
    - 리전: **ap-southeast-2 (시드니)**. 콘솔 오른쪽 위에서 리전을 먼저 바꾸고 만드세요.
    - AMI: Ubuntu Server 24.04 LTS, 아키텍처 **64비트(Arm)**. x86 AMI는 t4g에서 안 뜹니다.
    - 유형: **t4g.small**(2GB) / 스토리지 20GB (gp3)
-     - `deploy/.env`의 `APP_MEM_LIMIT=1536m`으로 앱 메모리를 잡습니다 (`.env.example`에 들어 있음).
-   - 키 페어 생성 후 `.pem` 보관
+   - 키 페어 생성 후 `.pem` 보관 (사람이 접속할 때 쓰는 키. 자동 배포용 키는 3-1에서 따로 만듭니다)
 2. 보안 그룹 인바운드
    | 포트 | 소스 | 용도 |
    |---|---|---|
-   | 22 | 내 IP | SSH |
+   | 22 | 0.0.0.0/0 | SSH (사람 + GitHub Actions 자동 배포) |
    | 80 | 0.0.0.0/0 | 인증서 발급·갱신, HTTPS 리다이렉트 |
    | 443 | 0.0.0.0/0 | 서비스 |
+   - **22번을 전체에 여는 이유**: GitHub Actions 러너는 실행할 때마다 IP가 바뀌고 범위가 매우 넓어서 IP로 제한할 수 없습니다.
+     대신 비밀번호 로그인을 막고(키로만 접속) fail2ban으로 반복 실패한 IP를 차단합니다 (1-2).
    - 8080은 열지 않습니다 (Nginx만 외부에 노출).
 3. **탄력적 IP** 할당 → 인스턴스에 연결 (재시작해도 IP 고정)
-4. 도메인 DNS에 **A 레코드**: `api.<도메인> → 탄력적 IP` (프론트용 `<도메인>`은 프론트 배포처 안내대로 설정)
+4. 도메인 DNS에 **A 레코드** `api` → 탄력적 IP (`api.wedid.site`)
 
-### 1-2. 서버 초기 설정 (SSH 접속 후 1회)
+### 1-2. 서버 기본 설정
 ```bash
-ssh -i wedid.pem ubuntu@<탄력적 IP>
+ssh -i wedid.pem ubuntu@api.wedid.site
 
 # Docker 설치
 curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker ubuntu
-exit   # 다시 접속해야 docker 그룹 적용
 
-# 스왑 2GB (메모리 1~2GB라 Gradle 이미지 빌드 시 메모리 부족 방지)
+# 스왑 2GB (Gradle 이미지 빌드 시 메모리 부족 방지)
 sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# SSH: 비밀번호 로그인·root 로그인이 꺼져 있는지 확인 (Ubuntu AMI 기본값은 둘 다 no)
+sudo sshd -T | grep -E '^(passwordauthentication|permitrootlogin|kbdinteractiveauthentication) '
+#   passwordauthentication no / permitrootlogin no(또는 prohibit-password) / kbdinteractiveauthentication no 이어야 함
+
+# fail2ban: SSH 로그인을 10분에 5번 실패한 IP를 1시간 차단
+sudo apt-get update && sudo apt-get install -y fail2ban python3-systemd
+sudo tee /etc/fail2ban/jail.local > /dev/null <<'EOF'
+[sshd]
+enabled  = true
+backend  = systemd
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+EOF
+sudo systemctl enable --now fail2ban
+sudo systemctl restart fail2ban
+sudo fail2ban-client status sshd      # "Status for the jail: sshd" 가 나오면 동작 중
+
+exit   # 다시 접속해야 docker 그룹 적용
+```
+- 내 IP가 차단됐으면 다른 네트워크(휴대폰 핫스팟 등)로 접속해서 `sudo fail2ban-client set sshd unbanip <내 IP>`.
+- GitHub Actions는 키로 바로 성공하므로 차단되지 않습니다.
+
+### 1-3. 코드 받기
+**레포가 public일 때** (지금 상태)
+```bash
+git clone https://github.com/wedid-team/backend.git ~/backend
+cd ~/backend && git checkout main
 ```
 
-### 1-3. 코드 받기와 환경변수
-```bash
-git clone https://github.com/wedid-team/backend.git
-cd backend
-git checkout develop        # PR 머지 전이라면 feat/deploy
+**레포가 private일 때: deploy key (읽기 전용 키)**
+1. 서버에서 GitHub용 키를 만듭니다.
+   ```bash
+   ssh-keygen -t ed25519 -C "wedid-ec2-deploy-key" -f ~/.ssh/github_deploy -N ""
+   cat ~/.ssh/github_deploy.pub      # 출력된 한 줄을 복사
+   ```
+2. GitHub 레포 → **Settings → Deploy keys → Add deploy key**
+   - Title: `wedid-ec2`, Key: 복사한 한 줄
+   - **Allow write access는 체크하지 않습니다** (서버는 pull만 함)
+3. 서버에서 github.com 접속에 이 키를 쓰도록 설정합니다.
+   ```bash
+   cat >> ~/.ssh/config <<'EOF'
+   Host github.com
+     HostName github.com
+     User git
+     IdentityFile ~/.ssh/github_deploy
+     IdentitiesOnly yes
+   EOF
+   chmod 600 ~/.ssh/config
+   ssh -T git@github.com
+   ```
+   처음 접속할 때 나오는 지문(fingerprint)이 [GitHub 공식 SSH 키 지문](https://docs.github.com/ko/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)과 같은지 확인한 뒤 `yes`.
+   `Hi wedid-team/backend! You've successfully authenticated...`가 나오면 성공입니다.
+4. SSH 주소로 clone 합니다. 이미 https로 받아뒀다면 주소만 바꿉니다.
+   ```bash
+   git clone git@github.com:wedid-team/backend.git ~/backend        # 새로 받을 때
+   cd ~/backend && git remote set-url origin git@github.com:wedid-team/backend.git   # 이미 받았을 때
+   git checkout main && git pull
+   ```
 
+### 1-4. 환경변수 (서버에만)
+```bash
+cd ~/backend
 cp deploy/.env.example deploy/.env
 nano deploy/.env            # 2번 목록 참고해서 채우기
 chmod 600 deploy/.env
 ```
+`deploy/.env`는 **서버에만** 둡니다. git에 커밋하지 않고 GitHub Secrets에도 넣지 않습니다. 자동 배포는 서버에 있는 이 파일을 그대로 씁니다.
 
-### 1-4. DB 스키마 적용 (Neon이 빈 DB일 때 1회)
-4번 참고. EC2에서 실행해도 되고 로컬 PC에서 해도 됩니다.
+### 1-5. DB 준비
+4번 순서대로 Neon에 스키마와 데이터를 넣습니다. 스키마가 없으면 앱이 뜨지 않습니다(`ddl-auto=validate`).
 
-### 1-5. 인증서 발급 (1회)
+### 1-6. 인증서 발급
 ```bash
-cd ~/backend/deploy
-sh scripts/init-cert.sh
+nslookup api.wedid.site               # 탄력적 IP가 나오는지 먼저 확인
+cd ~/backend/deploy && sh scripts/init-cert.sh
 ```
-도메인 A 레코드가 아직 전파되지 않았으면 실패합니다. `nslookup api.<도메인>`이 탄력적 IP를 가리키는지 먼저 확인하세요.
 
-### 1-6. 실행
+### 1-7. 첫 실행
 ```bash
 cd ~/backend/deploy
 docker compose up -d --build      # 첫 빌드는 5~10분 (EC2가 arm64라 네이티브 빌드)
 docker compose ps
 docker compose logs -f app        # "Started BackendApplication" 나오면 성공
 ```
-확인: `https://api.<도메인>/swagger-ui.html`
+확인: https://api.wedid.site/swagger-ui.html
 
-### 1-7. 업데이트 배포
-```bash
-cd ~/backend && git pull
-sh deploy/scripts/apply-sql.sh 036   # 새 sql 파일이 있을 때만, 새 파일 번호부터
-cd deploy && docker compose up -d --build
-```
+여기까지 되면 이후 배포는 3번(자동 배포)으로 합니다.
 
 ---
 
-## 2. 필요한 환경변수 (`deploy/.env`)
+## 2. 필요한 환경변수 (`deploy/.env`, 서버에만)
 
-| 변수 | 필수 | 설명 | 예시 |
+| 변수 | 필수 | 설명 | 값 |
 |---|---|---|---|
-| `DOMAIN` | ✅ | 백엔드 도메인 (Nginx·인증서) | `api.<도메인>` |
+| `DOMAIN` | ✅ | 백엔드 도메인 (Nginx·인증서) | `api.wedid.site` |
 | `CERT_EMAIL` | ✅ | 인증서 만료 알림 이메일 | |
 | `DB_URL` | ✅ | Neon JDBC 주소 | `jdbc:postgresql://ep-xxx.ap-southeast-2.aws.neon.tech/neondb?sslmode=require` |
 | `DB_USERNAME` | ✅ | Neon 사용자 | `neondb_owner` |
@@ -124,40 +173,91 @@ cd deploy && docker compose up -d --build
 | `JWT_SECRET` | ✅ | 32바이트 이상, 로컬과 다른 값 | `openssl rand -base64 48` |
 | `KAKAO_CLIENT_ID` / `KAKAO_CLIENT_SECRET` | ✅ | 카카오 REST API 키 / Client Secret | |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | ✅ | 구글 OAuth 클라이언트 | |
-| `FRONTEND_BASE_URL` | ✅ | 로그인 후 돌아갈 프론트 주소 | `https://<도메인>` |
-| `CORS_ALLOWED_ORIGINS` | ✅ | 허용 origin, 쉼표 구분 | `https://<도메인>,http://localhost:3000` |
-
-| `APP_MEM_LIMIT` | | 앱 컨테이너 메모리 제한 (비우면 `768m`) | `1536m` (t4g.small) |
+| `FRONTEND_BASE_URL` | ✅ | 로그인 후 돌아갈 프론트 주소 | `https://wedid.site` |
+| `CORS_ALLOWED_ORIGINS` | ✅ | 허용 origin, 쉼표 구분 | `https://wedid.site,http://localhost:3000` |
+| `APP_MEM_LIMIT` | | 앱 컨테이너 메모리 제한 | 비우면 `1536m` (t4g.small) |
 
 - `AUTH_COOKIE_SECURE=true`는 `docker-compose.yml`에서 고정합니다.
 - `WEDID_IMPORT_DIRECTORY`는 서버에 필요 없습니다 (XLSX 적재 때만 사용).
+- `CORS_ALLOWED_ORIGINS`의 `http://localhost:3000`은 프론트 로컬 개발 서버에서 배포 API를 부를 때 필요합니다. 필요 없으면 빼세요.
 - Neon 주소는 대시보드 **Connect**에서 **Connection pooling을 끈** 주소를 씁니다.
   `postgresql://USER:PASSWORD@HOST/DB?sslmode=require` → `DB_URL=jdbc:postgresql://HOST/DB?sslmode=require`
 
 ---
 
-## 3. 카카오·구글 콘솔 리다이렉트 URI
+## 3. 자동 배포 (GitHub Actions)
 
-로그인 콜백 경로는 `{백엔드 주소}/api/v1/auth/callback/{kakao|google}`입니다. (`application.properties`의 `{baseUrl}`이 Nginx가 넘긴 헤더로 `https://api.<도메인>`이 됩니다.)
+`main`에 머지(push)되면 `.github/workflows/deploy.yml`이 돕니다.
+
+1. EC2에 SSH로 접속
+2. `~/backend`에서 `git pull --ff-only origin main`
+3. `deploy/`에서 `docker compose up -d --build` (빌드는 서버에서)
+4. 남은 이미지 정리 (`docker image prune -f`)
+5. 헬스체크: `https://api.wedid.site/v3/api-docs`가 200을 줄 때까지 최대 5분 대기. 실패하면 서버의 `docker compose ps`와 app·nginx 로그를 출력하고 실패 처리
+- Actions 탭 → Deploy → **Run workflow**로 수동 실행도 됩니다.
+- 서버의 `~/backend`에서 추적 중인 파일을 직접 고치면 `git pull --ff-only`가 실패합니다. 서버에서는 `deploy/.env`와 인증서(`deploy/certbot/`, git 제외)만 만듭니다.
+- **새 `sql/` 파일은 자동으로 적용되지 않습니다.** main에 머지하기 **전에** Neon에 먼저 적용하세요 (`sh deploy/scripts/apply-sql.sh 036`). 순서가 바뀌면 앱이 스키마 검증에 실패해서 헬스체크가 실패합니다.
+
+### 3-1. 배포 전용 SSH 키 만들기
+사람이 쓰는 `.pem`과 별도로, GitHub Actions만 쓰는 키를 만듭니다. 문제가 생기면 이 키만 지우면 됩니다.
+
+로컬 PC(Git Bash)에서:
+```bash
+ssh-keygen -t ed25519 -C "github-actions-deploy@wedid" -f ~/.ssh/wedid_deploy -N ""
+
+# 공개키를 서버에 등록 (포트 포워딩 등은 막은 상태로)
+(printf 'no-port-forwarding,no-agent-forwarding,no-X11-forwarding '; cat ~/.ssh/wedid_deploy.pub) \
+  | ssh -i wedid.pem ubuntu@api.wedid.site 'cat >> ~/.ssh/authorized_keys'
+
+# 접속 확인
+ssh -i ~/.ssh/wedid_deploy ubuntu@api.wedid.site 'echo ok && docker compose version'
+```
+- 개인키(`~/.ssh/wedid_deploy`)는 3-2에서 Secret에 넣은 뒤 로컬에서 지워도 됩니다. 잃어버리면 새로 만들어 다시 등록하면 됩니다.
+- 키를 폐기할 때는 서버의 `~/.ssh/authorized_keys`에서 `github-actions-deploy@wedid` 줄을 지웁니다.
+
+### 3-2. GitHub Secrets 등록
+레포 → **Settings → Secrets and variables → Actions → New repository secret** (레포 관리자 권한 필요)
+
+| Secret | 값 |
+|---|---|
+| `EC2_HOST` | `api.wedid.site` (또는 탄력적 IP) |
+| `EC2_USER` | `ubuntu` |
+| `EC2_SSH_KEY` | `~/.ssh/wedid_deploy` **개인키 파일 전체** (`-----BEGIN OPENSSH PRIVATE KEY-----`부터 `-----END ...-----`까지, 줄바꿈 포함) |
+
+`gh` CLI로 넣을 수도 있습니다.
+```bash
+gh secret set EC2_HOST --repo wedid-team/backend --body "api.wedid.site"
+gh secret set EC2_USER --repo wedid-team/backend --body "ubuntu"
+gh secret set EC2_SSH_KEY --repo wedid-team/backend < ~/.ssh/wedid_deploy
+```
+`.env` 값(DB 비밀번호, JWT, OAuth 키)은 Secrets에 **넣지 않습니다.**
+
+---
+
+## 4. 카카오·구글 콘솔 리다이렉트 URI
+
+로그인 콜백 경로는 `https://api.wedid.site/api/v1/auth/callback/{kakao|google}`입니다. (`application.properties`의 `{baseUrl}`이 Nginx가 넘긴 헤더로 `https://api.wedid.site`가 됩니다.)
 
 **카카오 developers** (내 애플리케이션 → 해당 앱)
-- 플랫폼 → Web → 사이트 도메인: `https://api.<도메인>`, `https://<도메인>` 추가
-- 카카오 로그인 → Redirect URI: `https://api.<도메인>/api/v1/auth/callback/kakao` 추가
+- 플랫폼 → Web → 사이트 도메인: `https://api.wedid.site`, `https://wedid.site` 추가
+- 카카오 로그인 → Redirect URI: `https://api.wedid.site/api/v1/auth/callback/kakao` 추가
 - 카카오 로그인 활성화 ON 확인
 
 **Google Cloud Console** (API 및 서비스 → 사용자 인증 정보 → OAuth 2.0 클라이언트 ID)
-- 승인된 리디렉션 URI: `https://api.<도메인>/api/v1/auth/callback/google` 추가
+- 승인된 리디렉션 URI: `https://api.wedid.site/api/v1/auth/callback/google` 추가
 - OAuth 동의 화면이 "테스트" 상태면 등록한 테스트 사용자만 로그인됩니다.
 
 로컬용 `http://localhost:8080/...` URI는 지우지 말고 같이 둡니다.
 
 ---
 
-## 4. Neon에 sql 적용과 XLSX 원본 적재
+## 5. Neon에 스키마·데이터 넣기
 
-둘 다 **Docker가 있는 아무 PC**(로컬 PC 또는 EC2)에서 저장소 루트 기준으로 실행합니다. 접속 정보는 `deploy/.env`를 씁니다. 로컬 PC에서 하려면 로컬에도 `deploy/.env`를 만들어 DB 값만 채우면 됩니다.
+**적재 순서**: ① sql 스키마 → ② XLSX 원본 적재 → ③ 스드메 정리 적재 스크립트
 
-### 4-1. sql 마이그레이션
+모두 **Docker가 있는 아무 PC**(로컬 PC 또는 EC2)에서 저장소 루트 기준으로 실행합니다. 접속 정보는 `deploy/.env`의 `DB_*`를 씁니다. 로컬 PC에서 하려면 로컬에도 `deploy/.env`를 만들어 DB 값만 채우면 됩니다.
+
+### 5-1. ① sql 스키마
 ```bash
 sh deploy/scripts/apply-sql.sh          # 빈 DB: 001부터 전부
 sh deploy/scripts/apply-sql.sh 036      # 이후: 새 파일 번호부터
@@ -165,8 +265,9 @@ sh deploy/scripts/apply-sql.sh 036      # 이후: 새 파일 번호부터
 - psql 설치 없이 `postgres:16-alpine` 컨테이너의 psql을 씁니다.
 - 파일마다 트랜잭션 하나로 실행하고, 에러가 나면 그 파일은 되돌린 뒤 멈춥니다.
 - 이미 적용한 파일을 다시 돌리면 `already exists`로 멈춥니다. 어디까지 적용했는지는 직접 기록해야 합니다 (마이그레이션 도구 없음).
+- `sql/data/` 아래 파일은 번호 순서 적용 대상이 아닙니다 (③에서 직접 지정).
 
-### 4-2. XLSX 원본 적재 (XLSX 파일이 있는 PC에서)
+### 5-2. ② XLSX 원본 적재 (XLSX 파일이 있는 PC에서)
 ```bash
 ./gradlew bootJar -x test
 set -a; . deploy/.env; set +a
@@ -174,11 +275,29 @@ WEDID_IMPORT_DIRECTORY="C:/경로/xlsx폴더" \
 SPRING_PROFILES_ACTIVE=import-file-metadata \
 java -jar build/libs/backend-0.0.1-SNAPSHOT.jar --server.port=0
 ```
+- 필요한 파일 9개: `wedding_venues`, `wedding_hall_prices`, `wedding_options`, `sdm_vendors`, `sdm_prices`, `sdm_penalties`, `sdm_packages`, `sdm_options`, `market_stats` (.xlsx)
 - 로그에 `원본 행 저장 완료: market_stats.xlsx`가 나오면 끝난 것입니다. 서버가 계속 떠 있으니 **Ctrl+C로 종료**합니다.
   (보안 설정이 웹 서버를 전제로 해서 웹 서버를 끈 채로는 실행되지 않고, 그래서 `--server.port=0`으로 빈 포트에 띄웁니다.)
 - 같은 파일을 다시 돌려도 중복 적재되지 않습니다 (`ON CONFLICT DO NOTHING`).
 - `deploy/.env`의 비밀번호에 `$`, `!`, 공백이 있으면 `. deploy/.env`가 깨질 수 있습니다. 그때는 `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`만 따옴표로 감싸 직접 export 하세요.
-- 이 단계는 `source_files`/`source_rows`에 **원본 행만** 넣습니다. 원본 행을 `halls`·`vendors`·`price_records` 등으로 옮기는 코드는 아직 없습니다.
+- 이 단계는 `source_files`/`source_rows`에 **원본 행만** 넣습니다.
+
+### 5-3. ③ 스드메 정리 적재
+```bash
+sh deploy/scripts/apply-sql.sh sql/data/sdm_normalization_rebuild.sql
+```
+- 스드메 원본(`sdm_*`)을 `agencies`·`vendors`·`products`·`price_records`·`product_price_details`·`vendor_agencies`로 옮깁니다. `/api/v1/sdm/combinations`가 이 데이터를 씁니다.
+- 전체가 트랜잭션 하나이고, 여러 번 실행해도 결과가 같습니다.
+- 사전 점검에 걸리면 아무것도 넣지 않고 이유를 보여주며 멈춥니다.
+  - 원본이 없을 때 (②를 먼저 하세요)
+  - 수집일·자료 게시일이 `YYYY-MM-DD`가 아닐 때
+  - `출처 대행사` 한 칸에 쉼표로 여러 대행사가 있을 때
+- 끝나면 테이블별 행 수가 나옵니다. 로컬 원본 기준(11/25): agencies 24, vendors_sdm 555, products 3,409 + 패키지 6, vendor_agencies 1,548.
+
+### 5-4. 예식장·지역·통계 데이터 (아직 적재 방법 없음)
+- 예식장(`halls`·`hall_price_details`·`hall_cost_items`·예식장 업체), 지역(`regions`), 통계(`market_statistics`)를 원본에서 옮기는 코드나 SQL은 아직 레포에 없습니다.
+  ②까지만 하면 `/api/v1/halls`, `/api/v1/estimates/hall`, 추천 API는 데이터가 비어 있습니다.
+- `regions`를 채우는 sql도 없어서, 빈 DB에서는 **계획 생성(`POST /api/v1/plans`)이 "올바른 지역을 선택해주세요."로 실패합니다.**
 
 ---
 
@@ -186,8 +305,12 @@ java -jar build/libs/backend-0.0.1-SNAPSHOT.jar --server.port=0
 
 | 증상 | 확인 |
 |---|---|
+| 자동 배포가 SSH 단계에서 `Permission denied` | `EC2_SSH_KEY`가 개인키 전체인지, 서버 `authorized_keys`에 공개키가 있는지, `EC2_USER` |
+| 자동 배포가 `git pull`에서 실패 | 서버에서 추적 파일을 고쳤는지 `git status` |
+| 헬스체크 실패 | 실패 시 출력된 app 로그. 새 sql 미적용, 환경변수 누락이 흔함 |
 | nginx가 계속 재시작 | `docker compose logs nginx`. 인증서 파일이 없으면 `init-cert.sh`를 먼저 실행 |
 | app이 바로 종료 | `docker compose logs app`. 환경변수 누락이나 DB 스키마 미적용(`ddl-auto=validate`) |
 | 빌드 중 멈춤·Killed | 스왑 설정 확인 (`free -h`) |
 | Swagger "Try it out"이 http로 요청 | Nginx 경유인지 확인 (`X-Forwarded-Proto`) |
 | 첫 요청이 느림 | Neon은 5분간 요청이 없으면 잠들고, 깨어나는 데 1초 안팎이 걸림 |
+| SSH 접속이 갑자기 안 됨 | fail2ban 차단일 수 있음. 1-2의 unbanip |

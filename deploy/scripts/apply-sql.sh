@@ -5,6 +5,8 @@
 # 사용법 (저장소 루트에서):
 #   sh deploy/scripts/apply-sql.sh            # 001부터 전부 (빈 DB 최초 1회)
 #   sh deploy/scripts/apply-sql.sh 036        # 036 이상만 (새 sql 파일이 추가됐을 때)
+#   sh deploy/scripts/apply-sql.sh sql/data/sdm_normalization_rebuild.sql   # 파일 하나만 (데이터 정리 스크립트)
+#   (sql/data/ 아래 파일은 번호 순서 적용 대상이 아니라 직접 지정할 때만 실행된다)
 #
 # 접속 정보는 deploy/.env의 DB_URL, DB_USERNAME, DB_PASSWORD를 그대로 쓴다.
 # 각 파일은 하나의 트랜잭션으로 실행되고, 실패하면 그 파일은 되돌리고 즉시 멈춘다.
@@ -39,6 +41,22 @@ sslmode=require
 case "$rest" in *sslmode=*) sslmode=${rest#*sslmode=}; sslmode=${sslmode%%&*} ;; esac
 
 CONN="host=$host port=$port dbname=$dbname user=$DB_USERNAME sslmode=$sslmode"
+
+case "$FROM" in
+    *.sql)
+        # 파일 하나 실행: 파일 안에 BEGIN/COMMIT이 있으므로 --single-transaction을 붙이지 않는다
+        FILE="$FROM"
+        [ -f "$FILE" ] || FILE="$ROOT/$FROM"
+        if [ ! -f "$FILE" ]; then
+            echo "파일이 없습니다: $FROM" >&2
+            exit 1
+        fi
+        echo "대상 DB: $host / $dbname (파일 하나: $FROM)"
+        docker run --rm -i -e PGPASSWORD="$DB_PASSWORD" postgres:16-alpine \
+            psql "$CONN" -v ON_ERROR_STOP=1 < "$FILE"
+        exit 0
+        ;;
+esac
 
 echo "대상 DB: $host / $dbname (파일 번호 $FROM 이상)"
 
