@@ -34,9 +34,8 @@ class EstimateServiceTest {
                     mock(HallPriceDetailRepository.class),
                     mock(RegionRepository.class),
                     mock(WeddingDateResolver.class),
-                    mock(MarketStatisticsRepository.class),
-                    mock(ProductRepository.class),
-                    mock(ProductPriceDetailRepository.class)
+                    mock(MarketStatisticsRepository.class)
+
             );
 
 

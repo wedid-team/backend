@@ -1,6 +1,7 @@
 
 package com.wedid.backend.estimate.dto;
 
+import com.wedid.backend.estimate.region.KnownRegion;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -13,6 +14,7 @@ import java.util.Set;
 public record EstimateRequest(
 
         @NotBlank
+        @KnownRegion
         String regionCode,
 
         @NotBlank
@@ -35,15 +37,6 @@ public record EstimateRequest(
         EXACT, MONTH, UNDECIDED
     }
 
-    private static final Set<String> REGIONS = Set.of(
-            "SEOUL_GANGNAM", "SEOUL_OTHER",
-            "GYEONGGI", "INCHEON", "BUSAN",
-            "DAEGU", "JEONNAM_GWANGJU",
-            "DAEJEON", "ULSAN", "GANGWON",
-            "CHUNGCHEONG", "JEONBUK",
-            "GYEONGSANG", "JEJU"
-    );
-
     private static final Set<String> GUEST_RANGES = Set.of(
             "UNDER_100", "FROM_100_TO_150",
             "FROM_150_TO_200", "FROM_200_TO_250",
@@ -55,11 +48,6 @@ public record EstimateRequest(
             "BRIGHT", "GRAND", "CLASSIC",
             "GREENERY", "LUXURY", "ANY"
     );
-
-    @AssertTrue(message = "올바른 지역을 선택해주세요.")
-    public boolean isValidRegion() {
-        return regionCode == null || REGIONS.contains(regionCode);
-    }
 
     @AssertTrue(message = "올바른 하객 수를 선택해주세요.")
     public boolean isValidGuestRange() {

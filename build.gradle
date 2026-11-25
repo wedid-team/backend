@@ -37,8 +37,14 @@ dependencies {
 	implementation 'org.apache.poi:poi-ooxml:6.0.0' // XLSX 엑셀 파일을 읽기 위한 라이브러리
 	implementation 'commons-codec:commons-codec:1.23.0' // // POI와 함께 사용하는 Commons Codec 버전 지정
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+	developmentOnly 'me.paulschwarz:springboot4-dotenv:5.1.0' // 로컬 개발용 .env 자동 로딩
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// 실행 JAR 이름 고정: Dockerfile이 build/libs/app.jar 하나만 복사한다 (plain JAR와 헷갈리지 않게)
+tasks.named('bootJar') {
+	archiveFileName = 'app.jar'
 }

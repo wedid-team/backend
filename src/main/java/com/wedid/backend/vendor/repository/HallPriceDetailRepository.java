@@ -20,4 +20,9 @@ public interface HallPriceDetailRepository
             Long priceRecordId
     );
 
+    List<HallPriceDetail> findByPriceRecordIdIn(
+            List<Long> priceRecordIds
+    );
+
+
 }

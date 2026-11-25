@@ -10,6 +10,7 @@ public record HallCostEstimate(
         String priceSource,
         LocalDate referenceMonth,
         String regionName,
-        String sourceUrl
+        String sourceUrl,
+        Integer sampleCount
 ) {
 }

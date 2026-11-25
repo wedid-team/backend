@@ -13,3 +13,6 @@ build/
 .env
 .env.*
 !.env.example
+
+# Deploy (EC2): Let's Encrypt 인증서·개인키
+deploy/certbot/

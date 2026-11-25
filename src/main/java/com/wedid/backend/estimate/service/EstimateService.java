@@ -32,14 +32,6 @@ import com.wedid.backend.estimate.repository.MarketStatisticsRepository;
 
 import com.wedid.backend.estimate.dto.HallCostEstimate;
 
-import com.wedid.backend.estimate.entity.Product;
-import com.wedid.backend.estimate.entity.ProductPriceDetail;
-import com.wedid.backend.estimate.repository.ProductRepository;
-import com.wedid.backend.estimate.repository.ProductPriceDetailRepository;
-
-import java.util.Map;
-import java.util.LinkedHashMap;
-
 @Service
 public class EstimateService {
 
@@ -50,8 +42,6 @@ public class EstimateService {
     private final RegionRepository regionRepository;
     private final WeddingDateResolver weddingDateResolver;
     private final MarketStatisticsRepository marketStatisticsRepository;
-    private final ProductRepository productRepository;
-    private final ProductPriceDetailRepository productPriceDetailRepository;
 
 
     public EstimateService(
@@ -61,9 +51,7 @@ public class EstimateService {
             HallPriceDetailRepository hallPriceDetailRepository,
             RegionRepository regionRepository,
             WeddingDateResolver weddingDateResolver,
-            MarketStatisticsRepository marketStatisticsRepository,
-            ProductRepository productRepository,
-            ProductPriceDetailRepository productPriceDetailRepository
+            MarketStatisticsRepository marketStatisticsRepository
     ) {
         this.vendorRepository = vendorRepository;
         this.hallRepository = hallRepository;
@@ -72,8 +60,6 @@ public class EstimateService {
         this.regionRepository = regionRepository;
         this.weddingDateResolver = weddingDateResolver;
         this.marketStatisticsRepository = marketStatisticsRepository;
-        this.productRepository = productRepository;
-        this.productPriceDetailRepository = productPriceDetailRepository;
     }
 
 
@@ -901,7 +887,8 @@ public class EstimateService {
                     "HALL_DATA",
                     null,
                     null,
-                    null
+                    null,
+                    validHallCount
             ));
         }
 
@@ -932,7 +919,8 @@ public class EstimateService {
                 "MARKET_STATISTICS",
                 data.getReferenceMonth(),
                 data.getRegionRaw(),
-                data.getSourceUrl()
+                data.getSourceUrl(),
+                null
         ));
     }
     // 18. 실제 웨딩홀 가격 데이터로 계산 가능한 홀 수 확인
@@ -970,141 +958,6 @@ public class EstimateService {
         }
 
         return count;
-    }
-
-    // 19. 카테고리별 스드메 유효 가격 조회
-    public List<BigDecimal> findSdmPrices(String category) {
-
-        List<Product> products =
-                productRepository.findByCategory(category);
-
-        List<BigDecimal> prices = new ArrayList<>();
-
-        for (Product product : products) {
-
-            // 개별 스드메 상품만 사용
-            if (!"SDM_BASE".equals(product.getProductKind())) {
-                continue;
-            }
-
-            List<PriceRecord> records =
-                    priceRecordRepository.findByProductId(product.getId());
-
-            for (PriceRecord record : records) {
-
-                Optional<ProductPriceDetail> detailOptional =
-                        productPriceDetailRepository
-                                .findByPriceRecordId(record.getId());
-
-                if (detailOptional.isEmpty()) {
-                    continue;
-                }
-
-                ProductPriceDetail detail = detailOptional.get();
-
-                if (detail.getAmountMin() == null
-                        || detail.getAmountMax() == null) {
-                    continue;
-                }
-
-                if (detail.getAmountMin().signum() < 0
-                        || detail.getAmountMax().compareTo(
-                        detail.getAmountMin()) < 0) {
-                    continue;
-                }
-
-                // VAT 포함 가격이므로 추가 세금 없이 중간값 사용
-                BigDecimal midpoint = detail.getAmountMin()
-                        .add(detail.getAmountMax())
-                        .divide(
-                                BigDecimal.valueOf(2),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-                prices.add(midpoint);
-            }
-        }
-
-        return prices;
-    }
-
-    // 20. 스드메 예산 유형별 예상 비용 계산
-    public Map<String, BigDecimal> calculateSdmBudgetTypes() {
-
-        List<BigDecimal> studioPrices = findSdmPrices("STUDIO");
-        List<BigDecimal> dressPrices = findSdmPrices("DRESS");
-        List<BigDecimal> makeupPrices = findSdmPrices("MAKEUP");
-
-        // 가격 데이터가 하나라도 없으면 계산 불가
-        if (studioPrices.isEmpty()
-                || dressPrices.isEmpty()
-                || makeupPrices.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<String, BigDecimal> result = new LinkedHashMap<>();
-
-        result.put("BUDGET",
-                calculatePercentile(studioPrices, 0.25)
-                        .add(calculatePercentile(dressPrices, 0.25))
-                        .add(calculatePercentile(makeupPrices, 0.25))
-        );
-
-        result.put("BALANCED",
-                calculatePercentile(studioPrices, 0.50)
-                        .add(calculatePercentile(dressPrices, 0.50))
-                        .add(calculatePercentile(makeupPrices, 0.50))
-        );
-
-        result.put("PREMIUM",
-                calculatePercentile(studioPrices, 0.75)
-                        .add(calculatePercentile(dressPrices, 0.75))
-                        .add(calculatePercentile(makeupPrices, 0.75))
-        );
-
-        return result;
-    }
-
-    // 21. 웨딩홀 + 스드메 유형별 총 예상 비용 계산
-    public Map<String, BigDecimal[]> calculateTotalEstimate(
-            EstimateRequest request
-    ) {
-        Optional<HallCostEstimate> hallOptional =
-                calculateHallCostEstimate(request);
-
-        if (hallOptional.isEmpty()) {
-            return Map.of();
-        }
-
-        HallCostEstimate hall = hallOptional.get();
-
-        Map<String, BigDecimal> sdmBudgets =
-                calculateSdmBudgetTypes();
-
-        if (sdmBudgets.size() != 3) {
-            return Map.of();
-        }
-
-        Map<String, BigDecimal[]> result = new LinkedHashMap<>();
-
-        for (Map.Entry<String, BigDecimal> entry : sdmBudgets.entrySet()) {
-
-            BigDecimal sdmCost = entry.getValue();
-
-            BigDecimal totalMin =
-                    hall.minPrice().add(sdmCost);
-
-            BigDecimal totalMax =
-                    hall.maxPrice().add(sdmCost);
-
-            result.put(
-                    entry.getKey(),
-                    new BigDecimal[]{totalMin, totalMax}
-            );
-        }
-
-        return result;
     }
 
 }
