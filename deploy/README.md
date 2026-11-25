@@ -196,7 +196,7 @@ docker compose logs -f app        # "Started BackendApplication" 나오면 성�
 5. 헬스체크: `https://api.wedid.site/v3/api-docs`가 200을 줄 때까지 최대 5분 대기. 실패하면 서버의 `docker compose ps`와 app·nginx 로그를 출력하고 실패 처리
 - Actions 탭 → Deploy → **Run workflow**로 수동 실행도 됩니다.
 - 서버의 `~/backend`에서 추적 중인 파일을 직접 고치면 `git pull --ff-only`가 실패합니다. 서버에서는 `deploy/.env`와 인증서(`deploy/certbot/`, git 제외)만 만듭니다.
-- **새 `sql/` 파일은 자동으로 적용되지 않습니다.** main에 머지하기 **전에** Neon에 먼저 적용하세요 (`sh deploy/scripts/apply-sql.sh 036`). 순서가 바뀌면 앱이 스키마 검증에 실패해서 헬스체크가 실패합니다.
+- **새 `sql/` 파일은 자동으로 적용되지 않습니다.** main에 머지하기 **전에** Neon에 먼저 적용하고(`sh deploy/scripts/apply-sql.sh <새 번호>`, 지금 다음 번호는 037) 5번의 적용 이력에 한 줄 추가하세요. 순서가 바뀌면 앱이 스키마 검증에 실패해서 헬스체크가 실패합니다.
 
 ### 3-1. 배포 전용 SSH 키 만들기
 사람이 쓰는 `.pem`과 별도로, GitHub Actions만 쓰는 키를 만듭니다. 문제가 생기면 이 키만 지우면 됩니다.
@@ -280,13 +280,20 @@ gh secret set EC2_HOST_KEY --repo wedid-team/backend < ec2_host_ed25519.pub     
 
 | 항목 | 내용 |
 |---|---|
-| 적용일 | 2026-11-26 |
+| 최초 적재일 | 2026-11-26 |
 | Neon | 프로젝트 리전 AWS ap-southeast-2 (시드니), 직접 연결(pooling 끔), 서버 **PostgreSQL 18.7** |
-| 스키마 | `sql/` **001 ~ 035** (`apply-sql.sh`, 테이블 32개) |
+| 스키마 | `sql/` **001 ~ 036** 적용됨 (최초 001~035, 이후 이력은 아래 표) |
 | 데이터 | 가연 님 DB 전체 데이터 덤프 `wedid_full_data.sql` (아래 출처) |
 | 업체-대행사 연결 | `sql/data/sdm_vendor_agencies_rebuild.sql` 실행 (덤프의 vendor_agencies가 0건이라 따로 채움, 1,548건) |
 | 검증 | 로컬 테스트 DB에 같은 순서로 넣은 결과와 전체 테이블 행 수·시퀀스·내용 해시 비교 → 같음 (시드 실행 시각 컬럼 `created_at`·`effective_at`만 다름) |
-| 다음에 적용할 번호 | **036부터** (`sh deploy/scripts/apply-sql.sh 036`) |
+| 다음에 적용할 번호 | **037부터** (`sh deploy/scripts/apply-sql.sh 037`) |
+
+**sql 적용 이력** (새 파일을 Neon에 적용하면 여기에 한 줄 추가)
+
+| 번호 | 파일 | 적용일 | 적용한 사람 | 확인 |
+|---|---|---|---|---|
+| 001~035 | 스키마·기준 데이터 (최초 적재) | 2026-11-26 | min2eo | 테이블 32개, 위 "검증" 참고 |
+| 036 | `036_seed_roadmap_content_mock.sql` (로드맵 단계 문구·기본 할 일, UT용 목업) | 2026-11-26 | min2eo | `todo_templates` 8건, 6단계 모두 `decision_items`·`guidance_items` 채워짐 |
 
 **덤프 출처**
 - 파일: `wedid_full_data.sql` (78,546,620 bytes, sha256 `1d7dddf3b88f8fcc19246ea5f5d07d2abd7438ed264b188a950ddb6ff77adc82`). 레포에는 넣지 않음 (원본 데이터 포함, 78MB)
@@ -334,7 +341,7 @@ sh deploy/scripts/apply-sql.sh sql/data/sdm_vendor_agencies_rebuild.sql
 ### 5-1. ① sql 스키마
 ```bash
 sh deploy/scripts/apply-sql.sh          # 빈 DB: 001부터 전부
-sh deploy/scripts/apply-sql.sh 036      # 이후: 새 파일 번호부터
+sh deploy/scripts/apply-sql.sh 037      # 이후: 새 파일 번호부터 (적용 이력 표 참고)
 ```
 - psql 설치 없이 `postgres:16-alpine` 컨테이너의 psql을 씁니다.
 - 파일마다 트랜잭션 하나로 실행하고, 에러가 나면 그 파일은 되돌린 뒤 멈춥니다.
