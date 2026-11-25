@@ -1,0 +1,60 @@
+# EC2 배포용 구성: Spring(app) + Nginx(HTTPS) + Certbot(인증서 자동 갱신)
+# DB는 Neon(외부 PostgreSQL)을 쓰므로 여기 없음.
+# 실행 위치: 이 파일이 있는 deploy/ 폴더 (deploy/.env를 읽음)
+#   docker compose up -d --build
+
+services:
+  app:
+    build:
+      context: ..
+    # EC2 t4g(Graviton) 대상
+    platform: linux/arm64
+    image: wedid-backend
+    container_name: wedid-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Nginx가 HTTPS를 처리하므로 인증 쿠키는 항상 Secure
+      AUTH_COOKIE_SECURE: "true"
+    # deploy/.env의 APP_MEM_LIMIT (t4g.small 2GB 기준 1536m). 비우면 768m
+    # JVM 힙은 Dockerfile의 MaxRAMPercentage로 이 값의 75%
+    mem_limit: ${APP_MEM_LIMIT:-768m}
+    # 외부에 포트를 열지 않고 Nginx만 내부 네트워크로 접근
+    expose:
+      - "8080"
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: wedid-nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # templates/*.template의 ${DOMAIN}을 이 값으로 바꿔 설정 파일을 만든다
+      DOMAIN: ${DOMAIN:?deploy/.env에 DOMAIN을 설정하세요}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    # 갱신된 인증서를 반영하도록 6시간마다 설정 다시 읽기
+    command: /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g "daemon off;"'
+    logging: *default-logging
+
+  certbot:
+    image: certbot/certbot:v2.11.0
+    container_name: wedid-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 12시간마다 갱신 확인 (만료 30일 이내일 때만 실제 갱신)
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    logging: *default-logging

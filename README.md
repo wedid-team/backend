@@ -37,4 +37,9 @@ WEDID 백엔드
 
 ## API 문서
 서버 실행 후 아래 경로에서 Swagger UI를 확인할 수 있습니다.
-- http://localhost:8080/swagger-ui.html
+- 배포 서버: (배포 후 주소 기입)/swagger-ui.html
+- 로컬: http://localhost:8080/swagger-ui.html
+
+## 배포
+AWS EC2(Docker Compose: Spring + Nginx HTTPS) + Neon PostgreSQL 구성입니다.
+실행 순서, 환경변수, OAuth 리다이렉트 URI, DB 적용 방법은 [deploy/README.md](deploy/README.md)를 참고하세요.
