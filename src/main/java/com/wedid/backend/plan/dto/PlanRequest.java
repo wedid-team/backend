@@ -2,6 +2,7 @@ package com.wedid.backend.plan.dto;
 
 import com.wedid.backend.estimate.dto.EstimateRequest;
 import com.wedid.backend.estimate.dto.EstimateRequest.WeddingDateType;
+import com.wedid.backend.estimate.region.KnownRegion;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -19,6 +20,7 @@ import java.util.Set;
  */
 public record PlanRequest(
         @NotBlank
+        @KnownRegion
         String regionCode,
 
         @NotBlank
@@ -59,11 +61,6 @@ public record PlanRequest(
             return List.of();
         }
         return moods.stream().filter(mood -> !"ANY".equals(mood)).toList();
-    }
-
-    @AssertTrue(message = "올바른 지역을 선택해주세요.")
-    public boolean isValidRegion() {
-        return toEstimateConditions().isValidRegion();
     }
 
     @AssertTrue(message = "올바른 하객 수를 선택해주세요.")
