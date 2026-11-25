@@ -2,10 +2,12 @@ name: Deploy
 
 # main에 머지(push)되면 EC2에 SSH로 접속해 최신 main을 받고, 서버에서 이미지를 빌드해 다시 띄운다.
 # - 빌드는 서버(EC2 t4g, arm64)에서 한다. Actions에서는 SSH 명령과 헬스체크만 한다.
-# - 비밀값(.env)은 서버의 deploy/.env에만 있다. GitHub에는 SSH 접속 정보(Secrets 3개)만 둔다.
-#     EC2_HOST     서버 주소 (탄력적 IP 또는 api.wedid.site)
-#     EC2_USER     SSH 사용자 (ubuntu)
-#     EC2_SSH_KEY  배포 전용 SSH 개인키 전체 (deploy/README.md 5번)
+# - 비밀값(.env)은 서버의 deploy/.env에만 있다. GitHub에는 SSH 접속 정보(Secrets 4개)만 둔다.
+#     EC2_HOST      서버 주소 (탄력적 IP 또는 api.wedid.site)
+#     EC2_USER      SSH 사용자 (ubuntu)
+#     EC2_SSH_KEY   배포 전용 SSH 개인키 전체 (deploy/README.md 3-1)
+#     EC2_HOST_KEY  서버 SSH 호스트 공개키 (/etc/ssh/ssh_host_ed25519_key.pub 내용, deploy/README.md 3-3)
+#                   접속할 때마다 받아오지 않고 미리 확인한 키만 믿는다 (중간자 공격 방지)
 # - 새 sql/ 파일은 자동 적용하지 않는다. 머지 전에 Neon에 먼저 적용해야 한다 (ddl-auto=validate라 앱이 안 뜸).
 
 on:
@@ -36,28 +38,35 @@ jobs:
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST_KEY: ${{ secrets.EC2_HOST_KEY }}
         run: |
           set -eu
-          if [ -z "$EC2_HOST" ] || [ -z "$EC2_SSH_KEY" ]; then
-            echo "::error::EC2_HOST / EC2_SSH_KEY Secret이 비어 있습니다."
+          if [ -z "$EC2_HOST" ] || [ -z "$EC2_SSH_KEY" ] || [ -z "$EC2_HOST_KEY" ]; then
+            echo "::error::EC2_HOST / EC2_SSH_KEY / EC2_HOST_KEY Secret 중 비어 있는 것이 있습니다."
             exit 1
           fi
           install -m 700 -d ~/.ssh
           printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          # 서버 호스트 키 등록 (실행할 때마다 서버에서 받아옴)
-          ssh-keyscan -T 15 -t ed25519 "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          if [ ! -s ~/.ssh/known_hosts ]; then
-            echo "::error::서버 호스트 키를 받지 못했습니다. 보안 그룹 22번과 EC2_HOST를 확인하세요."
-            exit 1
-          fi
+          # 미리 확인해 Secret에 넣은 호스트 키로만 known_hosts를 만든다 (ssh-keyscan으로 받아오지 않음)
+          # EC2_HOST_KEY = "ssh-ed25519 AAAA... [주석]" → "<EC2_HOST> ssh-ed25519 AAAA..."
+          key_type=$(printf '%s' "$EC2_HOST_KEY" | awk 'NR==1{print $1}')
+          key_body=$(printf '%s' "$EC2_HOST_KEY" | awk 'NR==1{print $2}')
+          case "$key_type" in
+            ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) ;;
+            *) echo "::error::EC2_HOST_KEY 형식이 아닙니다. 서버의 /etc/ssh/ssh_host_ed25519_key.pub 내용을 그대로 넣으세요."; exit 1 ;;
+          esac
+          printf '%s %s %s\n' "$EC2_HOST" "$key_type" "$key_body" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          echo "고정한 호스트 키 지문:"
+          ssh-keygen -lf ~/.ssh/known_hosts
 
       - name: 서버에서 pull · 빌드 · 재시작
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ServerAliveInterval=30 \
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
             "$EC2_USER@$EC2_HOST" "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
           cd ~/"$APP_DIR"
@@ -97,7 +106,7 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$EC2_USER@$EC2_HOST" \
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" \
             "cd ~/$APP_DIR/deploy && docker compose ps && docker compose logs --tail=80 app nginx" || true
 
       - name: SSH 키 삭제

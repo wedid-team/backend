@@ -189,7 +189,7 @@ docker compose logs -f app        # "Started BackendApplication" 나오면 성�
 
 `main`에 머지(push)되면 `.github/workflows/deploy.yml`이 돕니다.
 
-1. EC2에 SSH로 접속
+1. EC2에 SSH로 접속 (Secret `EC2_HOST_KEY`에 미리 넣은 호스트 키와 다르면 접속하지 않고 실패)
 2. `~/backend`에서 `git pull --ff-only origin main`
 3. `deploy/`에서 `docker compose up -d --build` (빌드는 서버에서)
 4. 남은 이미지 정리 (`docker image prune -f`)
@@ -223,14 +223,37 @@ ssh -i ~/.ssh/wedid_deploy ubuntu@api.wedid.site 'echo ok && docker compose vers
 | `EC2_HOST` | `api.wedid.site` (또는 탄력적 IP) |
 | `EC2_USER` | `ubuntu` |
 | `EC2_SSH_KEY` | `~/.ssh/wedid_deploy` **개인키 파일 전체** (`-----BEGIN OPENSSH PRIVATE KEY-----`부터 `-----END ...-----`까지, 줄바꿈 포함) |
+| `EC2_HOST_KEY` | 서버 **호스트 공개키** 한 줄 (3-3에서 확인한 `ssh-ed25519 AAAA...`) |
 
 `gh` CLI로 넣을 수도 있습니다.
 ```bash
 gh secret set EC2_HOST --repo wedid-team/backend --body "api.wedid.site"
 gh secret set EC2_USER --repo wedid-team/backend --body "ubuntu"
 gh secret set EC2_SSH_KEY --repo wedid-team/backend < ~/.ssh/wedid_deploy
+gh secret set EC2_HOST_KEY --repo wedid-team/backend < ec2_host_ed25519.pub     # 3-3에서 저장한 파일
 ```
 `.env` 값(DB 비밀번호, JWT, OAuth 키)은 Secrets에 **넣지 않습니다.**
+
+### 3-3. 서버 호스트 키 고정 (`EC2_HOST_KEY`)
+자동 배포는 접속할 때마다 서버 키를 받아오지(`ssh-keyscan`) 않고, 여기서 **미리 확인한 키만** 믿습니다. 중간에서 다른 서버가 끼어들면 키가 달라서 접속을 거부합니다.
+
+1. **서버에서 호스트 공개키를 뽑습니다.** (`.pem`으로 SSH 접속한 상태)
+   ```bash
+   cat /etc/ssh/ssh_host_ed25519_key.pub          # ssh-ed25519 AAAA... root@ip-172-...  ← 이 한 줄이 EC2_HOST_KEY
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub   # 지문: 256 SHA256:xxxx... (ED25519)
+   ```
+2. **그 지문이 진짜 이 서버 것인지 AWS 콘솔로 확인합니다.** (SSH가 아닌 경로로 확인해야 의미가 있음)
+   - EC2 → 인스턴스 선택 → **작업 → 모니터링 및 문제 해결 → 시스템 로그 가져오기**
+   - 로그의 `-----BEGIN SSH HOST KEY FINGERPRINTS-----` 부분에 있는 `ED25519` 줄의 `SHA256:...`이 1번 지문과 같아야 합니다.
+   - 처음 `.pem`으로 접속할 때 `ED25519 key fingerprint is SHA256:...`라고 물어본 값과도 같아야 합니다.
+3. 1번의 한 줄을 로컬 파일(`ec2_host_ed25519.pub`)로 저장해서 3-2처럼 `EC2_HOST_KEY`에 넣습니다. 웹 화면에서 넣을 때는 한 줄을 그대로 붙여넣으면 됩니다.
+   ```bash
+   ssh -i wedid.pem ubuntu@api.wedid.site 'cat /etc/ssh/ssh_host_ed25519_key.pub' > ec2_host_ed25519.pub
+   ```
+4. 배포가 돌면 Actions 로그의 "고정한 호스트 키 지문"이 2번 지문과 같은지 한 번 확인하세요.
+
+- **인스턴스를 새로 만들면 호스트 키가 바뀝니다.** 그때는 1~3을 다시 해서 `EC2_HOST_KEY`를 갱신하세요. 안 하면 배포가 `Host key verification failed`로 멈춥니다.
+- 호스트 공개키는 비밀은 아니지만, 바꿔치기되면 안 되는 값이라 Secret으로 관리합니다.
 
 ---
 
@@ -324,7 +347,7 @@ sh deploy/scripts/apply-sql.sh 036      # 이후: 새 파일 번호부터
 set -a; . deploy/.env; set +a
 WEDID_IMPORT_DIRECTORY="C:/경로/xlsx폴더" \
 SPRING_PROFILES_ACTIVE=import-file-metadata \
-java -jar build/libs/backend-0.0.1-SNAPSHOT.jar --server.port=0
+java -jar build/libs/app.jar --server.port=0
 ```
 - 필요한 파일 9개: `wedding_venues`, `wedding_hall_prices`, `wedding_options`, `sdm_vendors`, `sdm_prices`, `sdm_penalties`, `sdm_packages`, `sdm_options`, `market_stats` (.xlsx)
 - 로그에 `원본 행 저장 완료: market_stats.xlsx`가 나오면 끝난 것입니다. 서버가 계속 떠 있으니 **Ctrl+C로 종료**합니다.
@@ -357,6 +380,8 @@ sh deploy/scripts/apply-sql.sh sql/data/sdm_normalization_rebuild.sql
 | 증상 | 확인 |
 |---|---|
 | 자동 배포가 SSH 단계에서 `Permission denied` | `EC2_SSH_KEY`가 개인키 전체인지, 서버 `authorized_keys`에 공개키가 있는지, `EC2_USER` |
+| 자동 배포가 `Host key verification failed` | 서버 호스트 키가 `EC2_HOST_KEY`와 다름. 인스턴스를 새로 만들었으면 3-3으로 갱신. 아니라면 지문을 AWS 시스템 로그와 대조 |
+| IP 주소로 접속하면 응답 없음 | 정상. `api.wedid.site`가 아닌 Host·SNI는 Nginx가 거부함 (`curl https://api.wedid.site/...`로 확인) |
 | 자동 배포가 `git pull`에서 실패 | 서버에서 추적 파일을 고쳤는지 `git status` |
 | 헬스체크 실패 | 실패 시 출력된 app 로그. 새 sql 미적용, 환경변수 누락이 흔함 |
 | nginx가 계속 재시작 | `docker compose logs nginx`. 인증서 파일이 없으면 `init-cert.sh`를 먼저 실행 |

@@ -43,3 +43,8 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// 실행 JAR 이름 고정: Dockerfile이 build/libs/app.jar 하나만 복사한다 (plain JAR와 헷갈리지 않게)
+tasks.named('bootJar') {
+	archiveFileName = 'app.jar'
+}

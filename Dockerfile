@@ -20,7 +20,8 @@ RUN ./gradlew bootJar --no-daemon -x test
 # 2단계: 실행 (eclipse-temurin은 arm64 이미지를 제공)
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=build /app/build/libs/*-SNAPSHOT.jar app.jar
+# bootJar 산출물 이름은 build.gradle에서 app.jar로 고정 (plain JAR는 복사하지 않음)
+COPY --from=build /app/build/libs/app.jar app.jar
 
 # JVM 메모리 옵션
 # - MaxRAMPercentage=75: 힙을 컨테이너 메모리 제한(docker-compose의 mem_limit)의 75%로

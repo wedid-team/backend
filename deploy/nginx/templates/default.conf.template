@@ -1,6 +1,27 @@
 # nginx 이미지가 시작할 때 ${DOMAIN}을 환경변수 값으로 바꿔 /etc/nginx/conf.d/default.conf를 만든다.
-# ($host 같은 nginx 변수는 그대로 남는다)
+# ($request_uri 같은 nginx 변수는 그대로 남는다)
+#
+# 요청의 Host 헤더는 믿지 않는다: 리다이렉트 주소와 앱에 넘기는 Host는 모두 ${DOMAIN}으로 고정하고,
+# ${DOMAIN}이 아닌 Host(IP 직접 접속, 다른 도메인)는 아래 default_server가 거부한다.
 
+# ── 모르는 Host 거부 ──
+# HTTP: 응답 없이 연결 종료
+server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+
+# HTTPS: SNI가 ${DOMAIN}이 아니면 TLS 핸드셰이크 자체를 거부 (인증서도 내주지 않음)
+# SNI는 ${DOMAIN}인데 Host 헤더만 다른 요청도 이 서버로 오므로 응답 없이 끊음
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+    return 444;
+}
+
+# ── ${DOMAIN} ──
 # HTTP: 인증서 발급·갱신 확인용 경로만 열고 나머지는 HTTPS로 보냄
 server {
     listen 80;
@@ -11,7 +32,7 @@ server {
     }
 
     location / {
-        return 301 https://$host$request_uri;
+        return 301 https://${DOMAIN}$request_uri;
     }
 }
 
@@ -33,11 +54,12 @@ server {
 
         # Spring(server.forward-headers-strategy=framework)이 원래 https 주소를 알 수 있게 전달
         # → Swagger 서버 주소, OAuth redirect URI가 https://${DOMAIN}으로 만들어짐
-        proxy_set_header Host              $host;
+        # Host·X-Forwarded-Host는 요청값($host)이 아니라 ${DOMAIN}으로 고정
+        proxy_set_header Host              ${DOMAIN};
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header X-Forwarded-Host  ${DOMAIN};
         proxy_set_header X-Forwarded-Port  443;
 
         proxy_read_timeout 60s;
