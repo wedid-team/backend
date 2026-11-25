@@ -44,16 +44,21 @@ CONN="host=$host port=$port dbname=$dbname user=$DB_USERNAME sslmode=$sslmode"
 
 case "$FROM" in
     *.sql)
-        # 파일 하나 실행: 파일 안에 BEGIN/COMMIT이 있으므로 --single-transaction을 붙이지 않는다
+        # 파일 하나 실행. 파일 안에 BEGIN;이 있으면(sql/data 스크립트) 그 트랜잭션을 그대로 쓰고,
+        # 없으면(pg_dump 덤프 등) --single-transaction으로 감싸 중간에 실패해도 전부 되돌린다.
         FILE="$FROM"
         [ -f "$FILE" ] || FILE="$ROOT/$FROM"
         if [ ! -f "$FILE" ]; then
             echo "파일이 없습니다: $FROM" >&2
             exit 1
         fi
-        echo "대상 DB: $host / $dbname (파일 하나: $FROM)"
+        TX=""
+        if ! grep -qE '^BEGIN;' "$FILE"; then
+            TX="--single-transaction"
+        fi
+        echo "대상 DB: $host / $dbname (파일 하나: $FROM${TX:+, 한 트랜잭션으로})"
         docker run --rm -i -e PGPASSWORD="$DB_PASSWORD" postgres:16-alpine \
-            psql "$CONN" -v ON_ERROR_STOP=1 < "$FILE"
+            psql "$CONN" -v ON_ERROR_STOP=1 $TX < "$FILE"
         exit 0
         ;;
 esac

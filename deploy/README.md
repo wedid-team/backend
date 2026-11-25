@@ -253,7 +253,58 @@ gh secret set EC2_SSH_KEY --repo wedid-team/backend < ~/.ssh/wedid_deploy
 
 ## 5. Neon에 스키마·데이터 넣기
 
+### Neon 적용 기록
+
+| 항목 | 내용 |
+|---|---|
+| 적용일 | 2026-11-26 |
+| Neon | 프로젝트 리전 AWS ap-southeast-2 (시드니), 직접 연결(pooling 끔), 서버 **PostgreSQL 18.7** |
+| 스키마 | `sql/` **001 ~ 035** (`apply-sql.sh`, 테이블 32개) |
+| 데이터 | 가연 님 DB 전체 데이터 덤프 `wedid_full_data.sql` (아래 출처) |
+| 업체-대행사 연결 | `sql/data/sdm_vendor_agencies_rebuild.sql` 실행 (덤프의 vendor_agencies가 0건이라 따로 채움, 1,548건) |
+| 검증 | 로컬 테스트 DB에 같은 순서로 넣은 결과와 전체 테이블 행 수·시퀀스·내용 해시 비교 → 같음 (시드 실행 시각 컬럼 `created_at`·`effective_at`만 다름) |
+| 다음에 적용할 번호 | **036부터** (`sh deploy/scripts/apply-sql.sh 036`) |
+
+**덤프 출처**
+- 파일: `wedid_full_data.sql` (78,546,620 bytes, sha256 `1d7dddf3b88f8fcc19246ea5f5d07d2abd7438ed264b188a950ddb6ff77adc82`). 레포에는 넣지 않음 (원본 데이터 포함, 78MB)
+- 만든 곳: 가연 님 로컬 DB, `pg_dump 18.7` 데이터 전용(`--data-only`), 2026-11-25 전달
+- 그 DB의 스키마: `sql/` **032까지** 적용된 상태. 033~035는 덤프에 들어 있는 17개 테이블을 건드리지 않아 충돌 없음
+- 원본 XLSX: 2026-11-16에 그 DB로 적재한 버전 (`source_files.sha256` 기준, 우리 로컬 원본과 파일 해시는 다르고 스드메 정리 결과는 같음)
+- 넣을 때 PG 18 전용 줄 3개를 뺌: `\restrict …`, `\unrestrict …`, `SET transaction_timeout = 0;`
+
+| 테이블 | 행 수 | | 테이블 | 행 수 |
+|---|---|---|---|---|
+| source_files | 9 | | price_records | 3,507 (스드메 3,415 + 예식장 92) |
+| source_rows | 18,469 | | hall_price_details | 92 |
+| regions | 3 (SEOUL_GANGNAM, SEOUL_OTHER, GYEONGGI) | | hall_cost_items | 293 |
+| agencies | 24 | | market_statistics | 70 |
+| vendors | 605 (스드메 555 + 예식장 50) | | options / option_prices | 8,061 / 8,061 |
+| products | 3,415 | | cancellation_policies | 879 |
+| product_price_details | 3,415 | | hall_mood_tags | 0 |
+| halls | 76 (모두 강남) | | vendor_agencies | 1,548 (덤프 0 → 스크립트로 채움) |
+
+### 적재 방법 A: 전체 덤프로 채우기 (지금 Neon에 쓴 방법)
+빈 DB 기준. **Docker가 있는 PC**에서 저장소 루트 기준으로 실행하고, 접속 정보는 `deploy/.env`의 `DB_*`를 씁니다.
+```bash
+# 1) 스키마
+sh deploy/scripts/apply-sql.sh
+
+# 2) 덤프: PG 18 전용 줄 3개를 빼고 한 트랜잭션으로 (중간에 실패하면 전부 되돌아감)
+awk 'BEGIN{b=sprintf("%c",92)} index($0, b "restrict ")==1 || index($0, b "unrestrict ")==1 || $0=="SET transaction_timeout = 0;" {next} {print}' \
+  wedid_full_data.sql > wedid_full_data.clean.sql
+grep -c 'restrict\|transaction_timeout' wedid_full_data.clean.sql   # 0이어야 함
+sh deploy/scripts/apply-sql.sh wedid_full_data.clean.sql            # BEGIN이 없는 파일은 자동으로 한 트랜잭션
+
+# 3) 업체-대행사 연결 (덤프에 vendor_agencies가 비어 있을 때)
+sh deploy/scripts/apply-sql.sh sql/data/sdm_vendor_agencies_rebuild.sql
+```
+- `\restrict` 줄은 `grep -v`로 빼려고 하면 셸에 따라 백슬래시가 줄어 안 빠질 수 있어서, 위처럼 문자 코드(92)로 비교합니다.
+- 덤프는 시퀀스 값(`setval`)도 함께 넣습니다. 이후 앱이 INSERT해도 id가 겹치지 않습니다.
+
+### 적재 방법 B: XLSX 원본부터 채우기
 **적재 순서**: ① sql 스키마 → ② XLSX 원본 적재 → ③ 스드메 정리 적재 스크립트
+
+예식장·지역·통계는 원본에서 정리 테이블로 옮기는 코드가 없어서 이 방법으로는 채워지지 않습니다 (5-4). 스드메만 필요할 때, 또는 원본 파일이 새로 바뀌었을 때 씁니다.
 
 모두 **Docker가 있는 아무 PC**(로컬 PC 또는 EC2)에서 저장소 루트 기준으로 실행합니다. 접속 정보는 `deploy/.env`의 `DB_*`를 씁니다. 로컬 PC에서 하려면 로컬에도 `deploy/.env`를 만들어 DB 값만 채우면 됩니다.
 
@@ -294,10 +345,10 @@ sh deploy/scripts/apply-sql.sh sql/data/sdm_normalization_rebuild.sql
   - `출처 대행사` 한 칸에 쉼표로 여러 대행사가 있을 때
 - 끝나면 테이블별 행 수가 나옵니다. 로컬 원본 기준(11/25): agencies 24, vendors_sdm 555, products 3,409 + 패키지 6, vendor_agencies 1,548.
 
-### 5-4. 예식장·지역·통계 데이터 (아직 적재 방법 없음)
-- 예식장(`halls`·`hall_price_details`·`hall_cost_items`·예식장 업체), 지역(`regions`), 통계(`market_statistics`)를 원본에서 옮기는 코드나 SQL은 아직 레포에 없습니다.
-  ②까지만 하면 `/api/v1/halls`, `/api/v1/estimates/hall`, 추천 API는 데이터가 비어 있습니다.
-- `regions`를 채우는 sql도 없어서, 빈 DB에서는 **계획 생성(`POST /api/v1/plans`)이 "올바른 지역을 선택해주세요."로 실패합니다.**
+### 5-4. 예식장·지역·통계 데이터 (방법 B로는 안 채워짐)
+- 예식장(`halls`·`hall_price_details`·`hall_cost_items`·예식장 업체), 지역(`regions`), 통계(`market_statistics`)를 원본에서 옮기는 코드나 SQL은 아직 레포에 없습니다. 지금은 **방법 A(전체 덤프)**로만 채웁니다.
+- 방법 B만 하면 `/api/v1/halls`, `/api/v1/estimates/hall`, 추천 API는 데이터가 비어 있고, `regions`가 비어서 `/api/v1/regions`도 빈 목록이며 계획 저장이 "올바른 지역을 선택해주세요."로 막힙니다.
+- 현재 데이터 범위: 지역 3개(강남·강남외·경기), 예식장은 강남만(업체 50·홀 76). 강남외·경기는 홀 목록이 비고 견적은 시장 통계(`MARKET_STATISTICS`)로 나옵니다.
 
 ---
 
