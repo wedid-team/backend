@@ -45,8 +45,19 @@ DO $$
 DECLARE
     v_vendors integer;
     v_agencies integer;
+    v_missing_datasets text;
     v_multi_agencies text;
 BEGIN
+    -- 보유 여부를 계산할 원본(가격·선택품목·위약금)마다 READY 행이 있어야 함.
+    -- 하나라도 없으면 그 보유 여부가 전부 false로 계산되고, ON CONFLICT DO UPDATE가
+    -- 기존 vendor_agencies 값을 false로 덮어쓰므로 아무것도 바꾸지 않고 멈춘다.
+    SELECT string_agg(required.dataset, ', ' ORDER BY required.dataset) INTO v_missing_datasets
+    FROM (VALUES ('sdm_prices'), ('sdm_options'), ('sdm_penalties')) AS required(dataset)
+    WHERE NOT EXISTS (SELECT 1 FROM _sdm_src s WHERE s.dataset = required.dataset);
+    IF v_missing_datasets IS NOT NULL THEN
+        RAISE EXCEPTION '보유 여부를 계산할 원본 행(READY)이 없는 데이터셋이 있습니다: %. 기존 연결을 false로 덮어쓰지 않도록 멈춥니다.', v_missing_datasets;
+    END IF;
+
     SELECT count(*) INTO v_vendors FROM public.vendors WHERE source_dataset = 'sdm_vendors';
     SELECT count(*) INTO v_agencies FROM public.agencies;
     IF v_vendors = 0 OR v_agencies = 0 THEN

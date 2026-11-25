@@ -3,7 +3,12 @@ WEDID 스드메 정규화 적재 SQL
 대상: source_rows -> agencies / vendors / products / price_records /
       product_price_details / vendor_agencies
 
-실행 순서 (deploy/README.md 4번)
+현재 사용 여부 (2026-11-26)
+- Neon과 로컬 개발 DB(wedid_full)는 이 스크립트를 쓰지 않았다. 가연 님 DB 전체 덤프로 정리 테이블까지
+  한 번에 채웠고, 덤프에 비어 있던 vendor_agencies만 sdm_vendor_agencies_rebuild.sql(이 파일의 9단계)로 채웠다.
+- 이 스크립트는 XLSX 원본부터 다시 채울 때(deploy/README.md 5번 "적재 방법 B") 쓴다.
+
+실행 순서 (deploy/README.md 5번 적재 방법 B)
   1) sql/ 스키마 적용          sh deploy/scripts/apply-sql.sh
   2) XLSX 원본 적재            (import-file-metadata 프로필)
   3) 이 스크립트              sh deploy/scripts/apply-sql.sh sql/data/sdm_normalization_rebuild.sql
@@ -24,7 +29,7 @@ WEDID 스드메 정규화 적재 SQL
   price_records.agency_id와 9단계 보유 여부는 이름이 정확히 같아야 연결되므로, 쉼표로
   여러 개가 들어오면 연결이 조용히 빠진다. 사전 점검에서 멈추게 했다.
   업체의 '공개 대행사'는 원래 쉼표로 여러 개이고 1·9단계에서 나눠서 처리한다.
-- vendors.region_id: 스드메 업체는 일부러 NULL로 둔다. regions 테이블이 비어 있고,
+- vendors.region_id: 스드메 업체는 일부러 NULL로 둔다. 원본이 서울 공개 가격이라 권역 구분이 없고,
   스드메 조합 API(SdmBasePriceRepository)는 지역으로 거르지 않아 영향이 없다.
   강남 필터(RecommendationRepository의 regions JOIN)는 예식장 추천에만 있고
   예식장 업체(wedding_venues)는 이 스크립트 대상이 아니다. 원본 시·군·구는 sigungu_raw에 남긴다.
@@ -89,16 +94,19 @@ $$;
 -- 사전 점검: 문제가 있으면 아무것도 적재하지 않고 이유와 예시 값을 보여주며 멈춘다
 DO $$
 DECLARE
-    v_source_count integer;
+    v_missing_datasets text;
     v_bad_dates text;
     v_multi_agencies text;
+    v_missing_package_agencies text;
 BEGIN
-    -- (1) 원본 적재 여부
-    SELECT count(*) INTO v_source_count
-    FROM _sdm_src
-    WHERE dataset IN ('sdm_vendors', 'sdm_prices');
-    IF v_source_count = 0 THEN
-        RAISE EXCEPTION 'sdm_vendors/sdm_prices 원본 행(READY)이 없습니다. XLSX 원본 적재를 먼저 실행하세요.';
+    -- (1) 필수 원본 데이터셋마다 READY 행이 있는지 (하나라도 없으면 부분 적재가 되므로 멈춤)
+    --     sdm_vendors 없음 → 가격 상품이 업체 JOIN에서 빠짐, sdm_prices 없음 → 대행사·가격 없음,
+    --     sdm_packages 없음 → 패키지 없음
+    SELECT string_agg(required.dataset, ', ' ORDER BY required.dataset) INTO v_missing_datasets
+    FROM (VALUES ('sdm_vendors'), ('sdm_prices'), ('sdm_packages')) AS required(dataset)
+    WHERE NOT EXISTS (SELECT 1 FROM _sdm_src s WHERE s.dataset = required.dataset);
+    IF v_missing_datasets IS NOT NULL THEN
+        RAISE EXCEPTION '원본 행(READY)이 없는 데이터셋이 있습니다: %. XLSX 원본 적재를 먼저 실행하세요.', v_missing_datasets;
     END IF;
 
     -- (2) 날짜로 바꿀 칸이 날짜로 읽히는지 (5·6단계의 ::date)
@@ -130,6 +138,31 @@ BEGIN
     ) multi;
     IF v_multi_agencies IS NOT NULL THEN
         RAISE EXCEPTION '출처 대행사가 쉼표로 여러 개인 행이 있습니다. 대행사 연결이 빠지므로 원본을 행별로 나눠주세요 (최대 10개): %', v_multi_agencies;
+    END IF;
+
+    -- (4) 패키지의 판매 대행사('업체명')가 agencies에 들어갈 이름인지
+    --     agencies는 1단계에서 sdm_prices의 '출처 대행사'로만 만들어지고, 4단계 패키지는 그 이름과
+    --     INNER JOIN하므로, 가격 원본에 한 번도 없는 대행사의 패키지는 조용히 빠진다.
+    SELECT string_agg(sample, ', ') INTO v_missing_package_agencies
+    FROM (
+        SELECT DISTINCT format('%s(%s)', pg_temp.sdm_cell(p.cells, '업체명'), pg_temp.sdm_cell(p.cells, '패키지 ID')) AS sample
+        FROM _sdm_src p
+        WHERE p.dataset = 'sdm_packages'
+          AND pg_temp.sdm_cell(p.cells, '패키지 ID') IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM _sdm_src s
+              CROSS JOIN LATERAL regexp_split_to_table(
+                  coalesce(pg_temp.sdm_cell(s.cells, '출처 대행사'), ''), '\s*,\s*') AS x(agency_name)
+              WHERE s.dataset = 'sdm_prices'
+                AND btrim(x.agency_name) = pg_temp.sdm_cell(p.cells, '업체명'))
+          AND NOT EXISTS (
+              SELECT 1 FROM public.agencies a
+              WHERE a.source_name = pg_temp.sdm_cell(p.cells, '업체명'))
+        LIMIT 10
+    ) missing;
+    IF v_missing_package_agencies IS NOT NULL THEN
+        RAISE EXCEPTION '패키지 판매 대행사가 가격 원본(sdm_prices 출처 대행사)과 agencies에 없어 패키지가 빠집니다 (최대 10개, 대행사(패키지 ID)): %', v_missing_package_agencies;
     END IF;
 END
 $$;
