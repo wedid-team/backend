@@ -6,6 +6,7 @@ import com.wedid.backend.auth.service.OAuthLoginService;
 import com.wedid.backend.auth.service.RefreshTokenService;
 import com.wedid.backend.auth.token.AccessTokenProvider;
 import com.wedid.backend.auth.web.AuthCookieManager;
+import com.wedid.backend.estimate.region.RegionRepository;
 import com.wedid.backend.global.config.ClockConfig;
 import com.wedid.backend.global.config.CorsConfig;
 import com.wedid.backend.global.security.SecurityConfig;
@@ -16,6 +17,7 @@ import com.wedid.backend.plan.service.PlanAlreadyExistsException;
 import com.wedid.backend.plan.service.PlanNotFoundException;
 import com.wedid.backend.plan.service.PlanService;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -93,6 +95,15 @@ class PlanControllerTest {
 
     @MockitoBean
     private OAuthLoginService oauthLoginService;
+
+    // 지역 검증(@KnownRegion)이 regions 테이블을 보므로, DB에 SEOUL_GANGNAM만 있다고 둔다
+    @MockitoBean
+    private RegionRepository regionRepository;
+
+    @BeforeEach
+    void regionsInDatabase() {
+        when(regionRepository.existsByCode("SEOUL_GANGNAM")).thenReturn(true);
+    }
 
     @Test
     void 로그인하지_않으면_계획_API는_401이다() throws Exception {
@@ -199,6 +210,13 @@ class PlanControllerTest {
         mockMvc.perform(post("/api/v1/plans").cookie(loggedIn())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_BODY.replace("SEOUL_GANGNAM", "MARS")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("올바른 지역을 선택해주세요."));
+
+        // 예전 하드코딩 목록(14개)에는 있었지만 DB regions에 없는 지역도 서비스 전에 막는다
+        mockMvc.perform(post("/api/v1/plans").cookie(loggedIn())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BODY.replace("SEOUL_GANGNAM", "INCHEON")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("올바른 지역을 선택해주세요."));
 

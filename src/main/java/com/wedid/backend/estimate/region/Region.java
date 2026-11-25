@@ -19,6 +19,9 @@ public class Region {
     @Column(name = "display_name", nullable = false)
     private String name;
 
+    @Column(name = "sort_order", nullable = false)
+    private Short sortOrder;
+
     protected Region() {
     }
 
@@ -32,5 +35,9 @@ public class Region {
 
     public String getName() {
         return name;
+    }
+
+    public Short getSortOrder() {
+        return sortOrder;
     }
 }
